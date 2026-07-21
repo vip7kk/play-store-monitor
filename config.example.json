@@ -5,11 +5,12 @@
   },
   "github": {
     "config_url": "https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/monitor_apps.json",
+    "token": "",
+    "repository": "YOUR_USERNAME/YOUR_REPO",
     "refresh_interval_minutes": 30
   },
   "monitor": {
     "check_interval_minutes": 10,
-    "language": "en",
-    "country": "us"
+    "countries": ["us", "cn", "jp", "kr", "de", "fr", "gb", "in", "br", "ru", "au", "ca", "tw", "hk", "sg", "th", "vn", "id", "my", "ph"]
   }
 }

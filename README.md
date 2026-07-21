@@ -4,7 +4,7 @@
 
 ## ✨ 核心特性
 
-- **多国查询**：自动遍历 30 个国家/地区，任一地区上架即视为已上架
+- **多国查询**：自动遍历 24 个国家/地区，任一地区上架即视为已上架
 - **自动清理**：应用上架后若再次下架，自动从 GitHub JSON 中删除该包名，无需手动维护
 - **状态对比**：通过 state.json 记录上次状态，仅在变化时推送通知（避免重复打扰）
 - **双模式运行**：GitHub Actions 定时触发（推荐）或本地服务器持续运行
@@ -116,7 +116,7 @@ cp config.example.json config.json
   },
   "monitor": {
     "check_interval_minutes": 10,
-    "countries": ["us", "cn", "jp", "kr", "de", "fr", "gb", "in", "br", "ru", "au", "ca", "tw", "hk", "sg"]
+    "countries": ["jp", "kr", "de", "fr", "gb", "in", "br", "au", "ca", "th", "vn", "id", "my", "ph", "mx", "es", "it", "nl", "se", "pl", "tr", "sa", "ae", "za"]
   }
 }
 ```
@@ -178,11 +178,10 @@ Telegram 上架消息示例：
 
 ## 🌍 多国查询
 
-默认查询以下 30 个国家/地区，任一国家发现应用即视为已上架：
+默认查询以下 24 个国家/地区，任一国家发现应用即视为已上架：
 
 ```
-us, cn, jp, kr, de, fr, gb, in, br, ru,
-au, ca, tw, hk, sg, th, vn, id, my, ph,
+jp, kr, de, fr, gb, in, br, au, ca, th, vn, id, my, ph,
 mx, es, it, nl, se, pl, tr, sa, ae, za
 ```
 
@@ -204,7 +203,7 @@ COUNTRIES_TO_CHECK=us,cn,jp,kr
 | Chat ID | `TG_CHAT_ID` | `telegram.chat_id` | 目标 Chat ID | - |
 | GitHub 配置 URL | `GH_CONFIG_URL` | `github.config_url` | monitor_apps.json 的 raw URL | - |
 | GitHub Token | `GH_TOKEN` | `github.token` | 用于自动删除下架包名 | - |
-| 查询国家 | `COUNTRIES_TO_CHECK` | `monitor.countries` | 查询国家列表（逗号分隔） | 30 国全量 |
+| 查询国家 | `COUNTRIES_TO_CHECK` | `monitor.countries` | 查询国家列表（逗号分隔） | 24 国 |
 | 检查间隔 | `MONITOR_INTERVAL` | `monitor.check_interval_minutes` | 本地模式检查频率（分钟） | 10 |
 | 仓库 | `GITHUB_REPOSITORY` | `github.repository` | Actions 自动提供 | - |
 
@@ -243,7 +242,7 @@ https://api.telegram.org/bot{TOKEN}/getUpdates
 
 **Q: 应用只在某个国家上架，其他国家搜不到？**
 
-本项目支持多国查询，默认遍历 30 个国家，任一国家上架即视为已上架。通知中会标注发现的国家区域。
+本项目支持多国查询，默认遍历 24 个国家，任一国家上架即视为已上架。通知中会标注发现的国家区域。
 
 **Q: 下架的包名会一直占用监控资源吗？**
 

@@ -14,6 +14,9 @@ on:
           - 'false'
           - 'true'
 
+permissions:
+  contents: write
+
 jobs:
   monitor:
     runs-on: ubuntu-latest
@@ -43,8 +46,8 @@ jobs:
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
           GH_CONFIG_URL: ${{ secrets.GH_CONFIG_URL }}
-          MONITOR_LANG: ${{ vars.MONITOR_LANG }}
-          MONITOR_COUNTRY: ${{ vars.MONITOR_COUNTRY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
         run: python play_monitor.py
 
       - name: Run monitor (first run)
@@ -53,8 +56,8 @@ jobs:
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
           GH_CONFIG_URL: ${{ secrets.GH_CONFIG_URL }}
-          MONITOR_LANG: ${{ vars.MONITOR_LANG }}
-          MONITOR_COUNTRY: ${{ vars.MONITOR_COUNTRY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
         run: python play_monitor.py --first-run
 
       - name: Save state for next run

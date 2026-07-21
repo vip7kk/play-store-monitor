@@ -1,19 +1,14 @@
 {
   "apps": [
     {
-      "package_name": "com.example.app1",
-      "app_name": "示例应用1",
-      "note": "待上架 - 需持续监控"
+      "package_name": "com.wdsfh.oiyhg",
+      "app_name": "",
+      "note": "待上架监控"
     },
     {
-      "package_name": "com.example.app2",
-      "app_name": "示例应用2",
-      "note": "已提交审核，预计3天内上架"
-    },
-    {
-      "package_name": "com.tencent.mm",
-      "app_name": "微信",
-      "note": "参考 - 已上架应用"
+      "package_name": "com.uyxdn.zbjys",
+      "app_name": "",
+      "note": "待上架监控"
     }
   ]
 }

@@ -2,15 +2,17 @@
   "apps": [
     {
       "package_name": "gAAAAABqXxvZosXaR2ToFeTa4cOUR8NHIQh5XOA0Zts-UX9fso39w9qM56ehVbe_ZqWiXfr9vrOeVO4atVKYZ9Uc8_EXiOwLuw==",
-      "encrypted": true,
       "note": "待上架监控",
-      "countries": ["mx"]
+      "countries": [
+        "mx"
+      ]
     },
     {
       "package_name": "gAAAAABqXxvZOuxu9Y3HZDhHapnWCyHxZh9iV5JY5_ckzGyUDVStGhJzvjLPp5lI_6MaIxGW70oECWTXTYAsx5SvAditCTHOOg==",
-      "encrypted": true,
       "note": "待上架监控",
-      "countries": ["mx"]
+      "countries": [
+        "mx"
+      ]
     }
   ]
 }

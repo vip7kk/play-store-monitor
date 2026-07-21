@@ -1,0 +1,15 @@
+{
+  "telegram": {
+    "bot_token": "YOUR_TELEGRAM_BOT_TOKEN",
+    "chat_id": "YOUR_TELEGRAM_CHAT_ID"
+  },
+  "github": {
+    "config_url": "https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/monitor_apps.json",
+    "refresh_interval_minutes": 30
+  },
+  "monitor": {
+    "check_interval_minutes": 10,
+    "language": "en",
+    "country": "us"
+  }
+}

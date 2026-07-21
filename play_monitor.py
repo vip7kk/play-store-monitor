@@ -11,7 +11,7 @@ Google Play Store 上架监控 + Telegram 提醒机器人
   - 环境变量缺失时从 config.json 读取（适合本地运行）
 
 特色功能：
-  - 多国查询：自动遍历多个国家/地区，任一地区上架即视为已上架
+  - 按应用配置上架国家：每个应用可单独指定上架目标国家，避免盲目遍历
   - 自动清理：应用上架后若再次下架，自动从 GitHub JSON 中删除该包名
 """
 
@@ -48,7 +48,7 @@ BASE_DIR = Path(__file__).parent
 CONFIG_PATH = BASE_DIR / "config.json"
 STATE_PATH = BASE_DIR / "state.json"
 
-# ── 多国查询列表（不限制国家时使用的默认列表）─────────────
+# ── 默认查询国家列表（应用未指定 countries 时使用）──────────
 # 覆盖全球主要市场（不含 us/cn/tw/hk/sg/ru），任一地区能搜到即视为已上架
 DEFAULT_COUNTRIES = [
     "jp", "kr", "de", "fr", "gb", "in", "br", "au", "ca", "th",
@@ -57,6 +57,17 @@ DEFAULT_COUNTRIES = [
 ]
 
 DEFAULT_LANG = "en"  # 多国查询统一使用英文，避免语言问题
+
+
+def get_app_countries(app_cfg: dict, fallback: list[str]) -> list[str]:
+    """
+    获取应用的目标上架国家列表。
+    优先使用 app_cfg.countries（按应用配置），未指定时使用 fallback。
+    """
+    app_countries = app_cfg.get("countries")
+    if app_countries and len(app_countries) > 0:
+        return app_countries
+    return fallback
 
 
 # ── 配置加载（环境变量优先，config.json 兜底）───────────
@@ -222,11 +233,14 @@ def send_telegram_message(bot_token: str, chat_id: str, text: str):
         logger.error(f"Telegram 通知发送失败: {e}")
 
 
-def format_app_info(app_config: dict, play_info: dict | None) -> str:
+def format_app_info(app_config: dict, play_info: dict | None, app_countries: list[str] | None = None) -> str:
     """格式化应用信息为 Telegram 消息文本"""
     pkg = app_config.get("package_name", "")
     name = app_config.get("app_name", pkg)
     note = app_config.get("note", "")
+    countries_str = ""
+    if app_countries:
+        countries_str = f"\n*目标国家*: {', '.join(app_countries)}"
 
     if play_info:
         country_tag = f"（{play_info.get('found_in_country', '')} 区）" if play_info.get("found_in_country") else ""
@@ -237,7 +251,7 @@ def format_app_info(app_config: dict, play_info: dict | None) -> str:
             f"*版本*: {play_info['version']}\n"
             f"*评分*: {play_info['score']}\n"
             f"*安装量*: {play_info['installs']}\n"
-            f"*备注*: {note}\n\n"
+            f"*备注*: {note}{countries_str}\n\n"
             f"[查看应用]({play_info['url']})"
         )
     else:
@@ -245,7 +259,7 @@ def format_app_info(app_config: dict, play_info: dict | None) -> str:
             f"⚠️ *应用未上架*\n\n"
             f"*包名*: `{pkg}`\n"
             f"*预期名称*: {name}\n"
-            f"*备注*: {note}"
+            f"*备注*: {note}{countries_str}"
         )
 
 
@@ -340,9 +354,10 @@ def run_check_cycle(config: dict, first_run: bool = False):
 
     for app_cfg in apps:
         pkg = app_cfg["package_name"]
-        logger.info(f"检查: {pkg} ({app_cfg.get('app_name', '')})")
+        app_countries = get_app_countries(app_cfg, countries)
+        logger.info(f"检查: {pkg} ({app_cfg.get('app_name', '')}) | 目标国家: {','.join(app_countries)}")
 
-        play_info = check_play_store(pkg, countries)
+        play_info = check_play_store(pkg, app_countries)
         is_live = play_info is not None
 
         new_state[pkg] = {
@@ -353,15 +368,15 @@ def run_check_cycle(config: dict, first_run: bool = False):
         prev = prev_state.get(pkg)
         if prev is None and first_run:
             logger.info(f"首次检查 {pkg}: {'已上架' if is_live else '未上架'}")
-            msg = format_app_info(app_cfg, play_info)
+            msg = format_app_info(app_cfg, play_info, app_countries)
             send_telegram_message(tg["bot_token"], tg["chat_id"], msg)
         elif prev is None and not first_run:
             logger.info(f"新增监控 {pkg}: {'已上架' if is_live else '未上架'}")
-            msg = f"📋 *新增监控应用*\n\n{format_app_info(app_cfg, play_info)}"
+            msg = f"📋 *新增监控应用*\n\n{format_app_info(app_cfg, play_info, app_countries)}"
             send_telegram_message(tg["bot_token"], tg["chat_id"], msg)
         elif not prev["live"] and is_live:
             logger.info(f"🎉 {pkg} 新上架！")
-            msg = format_app_info(app_cfg, play_info)
+            msg = format_app_info(app_cfg, play_info, app_countries)
             send_telegram_message(tg["bot_token"], tg["chat_id"], msg)
         elif prev["live"] and not is_live:
             # 从上架 → 下架：发送通知 + 自动从 JSON 删除

@@ -46,6 +46,7 @@ jobs:
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
           GH_CONFIG_URL: ${{ secrets.GH_CONFIG_URL }}
+          ENCRYPT_KEY: ${{ secrets.ENCRYPT_KEY }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: python play_monitor.py
@@ -56,6 +57,7 @@ jobs:
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
           GH_CONFIG_URL: ${{ secrets.GH_CONFIG_URL }}
+          ENCRYPT_KEY: ${{ secrets.ENCRYPT_KEY }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: python play_monitor.py --first-run

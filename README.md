@@ -5,7 +5,7 @@
 ## ✨ 核心特性
 
 - **按应用配置上架国家**：每个应用必须指定上架目标国家，只查询配置的国家，无默认列表兜底
-- **包名加密**：支持 Fernet 加密存储包名，GitHub 仓库中不暴露真实包名，加密密钥通过 Secrets 管理
+- **包名自动加密**：推送明文包名到 GitHub 后自动加密，仓库中永远只存储加密后的包名，无需手动加密
 - **自动清理**：应用上架后若再次下架，自动从 GitHub JSON 中删除该包名，无需手动维护
 - **状态对比**：通过 state.json 记录上次状态，仅在变化时推送通知（避免重复打扰）
 - **双模式运行**：GitHub Actions 定时触发（推荐）或本地服务器持续运行
@@ -15,8 +15,10 @@
 
 ```
 ├── play_monitor.py           # 核心监控脚本（支持环境变量 + config.json 双配置源）
+├── encrypt_packages.py       # 自动加密脚本（push 明文包名后自动触发加密）
 ├── .github/workflows/        # GitHub Actions 工作流配置
-│   └── monitor.yml           # 每 10 分钟自动触发，支持手动运行
+│   ├── monitor.yml           # 每 10 分钟自动触发，支持手动运行
+│   └── encrypt.yml           # push monitor_apps.json 时自动加密明文包名
 ├── monitor_apps.json         # 监控列表（包名列表，存储在 GitHub 仓库）
 ├── config.example.json       # 本地运行配置模板（含说明）
 ├── config.json               # 本地运行实际配置（不入库，敏感信息）
@@ -43,15 +45,33 @@
 
 将本项目推送到你的 GitHub 仓库，确保包含以下文件：
 - `play_monitor.py`
+- `encrypt_packages.py`
 - `.github/workflows/monitor.yml`
+- `.github/workflows/encrypt.yml`
 - `monitor_apps.json`
 - `requirements.txt`
 
 #### 3. 编辑监控列表
 
-修改仓库中的 `monitor_apps.json`，支持**加密包名**和**明文包名**两种格式：
+修改仓库中的 `monitor_apps.json`。**支持直接写明文包名**，push 到 GitHub 后会自动加密：
 
-**加密包名**（推荐，仓库中不暴露真实包名）：
+**明文包名**（推荐写法，push 后自动加密，仓库中不会保留明文）：
+
+```json
+{
+  "apps": [
+    {
+      "package_name": "com.example.myapp",
+      "note": "2026-07-20 提交审核",
+      "countries": ["mx"]
+    }
+  ]
+}
+```
+
+> 只要没有 `"encrypted": true` 标记，push 到 GitHub 后 `encrypt.yml` workflow 会自动用 Fernet 加密包名并推回仓库。加密后文件中的明文包名会被替换为加密字符串，同时加上 `"encrypted": true` 标记。
+
+**已加密包名**（自动加密后的结果，也可手动加密写入）：
 
 ```json
 {
@@ -66,29 +86,15 @@
 }
 ```
 
-**明文包名**（不加密，任何人都能看到）：
-
-```json
-{
-  "apps": [
-    {
-      "package_name": "com.example.myapp",
-      "note": "2026-07-20 提交审核",
-      "countries": ["jp", "kr", "de", "fr"]
-    }
-  ]
-}
-```
-
 | 字段 | 必填 | 说明 |
 |------|------|------|
 | `package_name` | ✅ | 应用包名（加密或明文） |
 | `countries` | ✅ | 上架目标国家列表，只查询这些国家。**必填，未配置时跳过检查** |
-| `encrypted` | ❌ | 是否加密包名，`true` 时需配置 `ENCRYPT_KEY` 才能解密 |
+| `encrypted` | ❌ | 由自动加密 workflow 设置，手动无需填写 |
 | `note` | ❌ | 备注，会显示在通知消息中 |
 | `app_name` | ❌ | 应用名称（脚本会自动从 Play Store 获取，可不填） |
 
-> 加密包名需要配合 `ENCRYPT_KEY` Secret 使用。加密后即使仓库是公开的，也无法看到真实包名。详见 [🔒 包名加密](#-包名加密) 章节。
+> 推送明文包名后，`encrypt.yml` workflow 会自动加密，无需手动操作。详见 [🔒 包名自动加密](#-包名自动加密) 章节。
 
 #### 4. 配置 GitHub Actions Secrets
 
@@ -235,22 +241,47 @@ Telegram 上架消息示例：
 | 成本 | 免费（GitHub 提供） | 需服务器 |
 | 运行方式 | 每 10 分钟触发单次 | 持续循环 |
 | 敏感配置 | Secrets 加密存储 | config.json（不入库） |
+| 自动加密包名 | ✅ push 后自动加密 | ❌ 需手动加密 |
 | 自动删除下架包名 | ✅ 使用 GITHUB_TOKEN | ✅ 需配置 GitHub Token |
 | 手动触发 | ✅ Run workflow 按钮 | ❌ 需重启进程 |
 | 首次通知 | ✅ first_run 选项 | ✅ --first-run 参数 |
 
 ## 🔐 安全说明
 
-- **包名加密**：使用 Fernet（AES-128-CBC + HMAC-SHA256）对称加密，密钥通过 `ENCRYPT_KEY` Secret 管理。加密后的包名在 GitHub 仓库中显示为不可读的 base64 字符串，即使仓库公开也不会暴露真实包名
+- **包名自动加密**：推送明文包名到 GitHub 后，`encrypt.yml` workflow 自动用 Fernet 加密并推回仓库。仓库中只保留加密后的包名，即使仓库公开也不会暴露真实包名。加密密钥通过 `ENCRYPT_KEY` Secret 管理
 - **GitHub Actions**：Bot Token、Chat ID、加密密钥等敏感信息通过 Secrets 加密存储，代码中不包含任何密钥
 - **本地运行**：`config.json` 不应提交到仓库（已在 .gitignore 中排除），使用 `config.example.json` 作为模板
 - **GitHub Token**：自动删除下架包名需要 Token 权限（Actions 使用自动生成的 GITHUB_TOKEN，本地运行需手动配置 Classic PAT，需 `repo` + `workflow` 权限）
 
-## 🔒 包名加密
+## 🔒 包名自动加密
 
-如果你不希望别人在 GitHub 仓库中看到你的应用包名，可以使用 Fernet 加密。
+推送明文包名到 GitHub 仓库后，`encrypt.yml` workflow 会自动触发加密，无需手动操作。
 
-### 生成加密密钥
+### 工作流程
+
+```
+你 push monitor_apps.json（含明文包名）
+        ↓
+GitHub 触发 encrypt.yml workflow
+        ↓
+encrypt_packages.py 读取文件，找出未加密的包名
+        ↓
+用 ENCRYPT_KEY (Fernet) 加密包名
+        ↓
+将加密后的内容推回 GitHub（明文包名被替换为加密字符串）
+        ↓
+仓库中只保留加密后的包名，无法看到真实包名
+```
+
+### 防止无限循环
+
+加密脚本推送的 commit 由 `github-actions[bot]` 发起，`encrypt.yml` 会自动跳过这类 push，不会再次触发加密，避免无限循环。
+
+### 前置条件
+
+确保已配置 `ENCRYPT_KEY` GitHub Secret（Fernet 加密密钥）。如未配置，加密 workflow 会报错退出。
+
+生成加密密钥：
 
 ```bash
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
@@ -258,9 +289,46 @@ python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().d
 
 输出示例：`tnDtrmbSFYEB3w5e_--vNcN9QNOrIy0wGt1I00sqz6c=`
 
-将此密钥保存到 GitHub Secrets（`ENCRYPT_KEY`）或本地 `config.json` 的 `monitor.encrypt_key`。
+将此密钥保存到 GitHub Secrets（`ENCRYPT_KEY`）。
 
-### 加密包名
+### 使用方式
+
+**直接写明文包名，push 后自动加密：**
+
+```json
+{
+  "apps": [
+    {
+      "package_name": "com.example.myapp",
+      "note": "2026-07 提交审核",
+      "countries": ["mx"]
+    }
+  ]
+}
+```
+
+push 后几秒钟，workflow 自动完成加密，文件变为：
+
+```json
+{
+  "apps": [
+    {
+      "package_name": "gAAAAABqXxvZosXaR2ToFeTa4cOU...",
+      "encrypted": true,
+      "note": "2026-07 提交审核",
+      "countries": ["mx"]
+    }
+  ]
+}
+```
+
+- `encrypted: true` 由自动加密 workflow 设置，无需手动填写
+- 加密后即使仓库是公开的，也无法看到真实包名
+- 脚本运行时自动使用 `ENCRYPT_KEY` 解密，通知消息中显示真实包名
+
+### 手动加密（可选）
+
+如果不想等自动加密，也可以手动加密包名后再写入：
 
 ```bash
 python -c "
@@ -271,26 +339,7 @@ print(f.encrypt('com.example.myapp'.encode()).decode())
 "
 ```
 
-输出示例：`gAAAAABqXxvZosXaR2ToFeTa4cOU...`
-
-### 在 monitor_apps.json 中使用加密包名
-
-```json
-{
-  "apps": [
-    {
-      "package_name": "gAAAAABqXxvZosXaR2ToFeTa4cOU...",
-      "encrypted": true,
-      "countries": ["mx"]
-    }
-  ]
-}
-```
-
-- 设置 `encrypted: true` 表示该包名是加密的
-- 脚本运行时自动使用 `ENCRYPT_KEY` 解密
-- 通知消息中显示的是解密后的真实包名
-- 加密和明文包名可以混合使用（部分加密、部分明文）
+手动加密的包名写入 JSON 时需加上 `"encrypted": true` 标记。
 
 ## 💡 常见问题
 
@@ -324,20 +373,16 @@ https://api.telegram.org/bot{TOKEN}/getUpdates
 
 **Q: 如何添加新的监控应用？**
 
-直接编辑 GitHub 仓库中的 `monitor_apps.json`，添加新的包名条目（必须指定 `countries` 目标国家）。下一轮检查会自动发现并监控新应用。
-
-如果使用加密模式，先用 `ENCRYPT_KEY` 加密包名，再写入 JSON：
-
-```bash
-python -c "
-from cryptography.fernet import Fernet
-key = 'YOUR_ENCRYPT_KEY'
-f = Fernet(key.encode())
-pkg = 'com.new.app'
-print(f'加密后: {f.encrypt(pkg.encode()).decode()}')
-"
-```
+直接编辑 GitHub 仓库中的 `monitor_apps.json`，添加新的包名条目（必须指定 `countries` 目标国家）。**直接写明文包名即可，push 后自动加密**，无需手动加密。下一轮检查会自动发现并监控新应用。
 
 **Q: 包名加密后忘记了密钥怎么办？**
 
 密钥丢失后无法解密包名。请妥善保管 `ENCRYPT_KEY`，建议同时备份到安全的地方。
+
+**Q: 明文包名推送后多久会被加密？**
+
+push 到 GitHub 后，`encrypt.yml` workflow 通常在几秒到十几秒内触发完成加密。加密完成后仓库中明文包名会被替换为加密字符串。
+
+**Q: 自动加密会无限循环吗？**
+
+不会。加密脚本推送的 commit 由 `github-actions[bot]` 发起，`encrypt.yml` workflow 会自动跳过这类 push（`if: github.actor != 'github-actions[bot]'`），不会再次触发。

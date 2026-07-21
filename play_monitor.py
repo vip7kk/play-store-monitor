@@ -184,11 +184,13 @@ def fetch_monitor_list(url: str, encrypt_key: str = "") -> list[dict]:
 
         # 强制解密所有包名（包名一律为加密格式）
         for app_cfg in apps:
-            original = app_cfg.get("package_name", "")
+            original = app_cfg.get("package_name")
             # 清理可能残留的 encrypted 字段
             if "encrypted" in app_cfg:
                 del app_cfg["encrypted"]
+            # package_name 是必填字段，缺少时跳过并报错
             if not original:
+                logger.error(f"⚠️ 条目缺少必填字段 package_name，跳过: {app_cfg}")
                 continue
             decrypted = decrypt_package_name(original, encrypt_key)
             if decrypted != original:
@@ -405,7 +407,11 @@ def run_check_cycle(config: dict, first_run: bool = False):
     packages_to_remove = []  # 收集需要从 JSON 删除的包名
 
     for app_cfg in apps:
-        pkg = app_cfg.get("package_name", "")
+        pkg = app_cfg.get("package_name")
+        # package_name 必填，缺少时跳过
+        if not pkg:
+            logger.error(f"⚠️ 条目缺少必填字段 package_name，跳过: {app_cfg}")
+            continue
         real_pkg = app_cfg.get("package_name_decrypted", pkg)  # 解密后的真实包名
         
         # 每个应用必须指定 countries，否则跳过

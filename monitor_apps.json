@@ -2,13 +2,13 @@
   "apps": [
     {
       "package_name": "com.wdsfh.oiyhg",
-      "app_name": "",
-      "note": "待上架监控"
+      "note": "待上架监控",
+      "countries": ["jp", "kr", "de", "fr", "gb", "in", "br", "au", "ca", "th", "vn", "id", "my", "ph", "mx", "es", "it", "nl", "se", "pl", "tr", "sa", "ae", "za"]
     },
     {
       "package_name": "com.uyxdn.zbjys",
-      "app_name": "",
-      "note": "待上架监控"
+      "note": "待上架监控",
+      "countries": ["jp", "kr", "de", "fr", "gb", "in", "br", "au", "ca", "th", "vn", "id", "my", "ph", "mx", "es", "it", "nl", "se", "pl", "tr", "sa", "ae", "za"]
     }
   ]
 }

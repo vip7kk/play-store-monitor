@@ -11,7 +11,7 @@ Google Play Store 上架监控 + Telegram 提醒机器人
   - 环境变量缺失时从 config.json 读取（适合本地运行）
 
 特色功能：
-  - 按应用配置上架国家：每个应用可单独指定上架目标国家，避免盲目遍历
+  - 按应用配置上架国家：每个应用必须指定上架目标国家，只查询配置的国家
   - 包名加密：支持 Fernet 加密存储包名，GitHub 仓库中不暴露真实包名
   - 自动清理：应用上架后若再次下架，自动从 GitHub JSON 中删除该包名
 """
@@ -55,15 +55,7 @@ BASE_DIR = Path(__file__).parent
 CONFIG_PATH = BASE_DIR / "config.json"
 STATE_PATH = BASE_DIR / "state.json"
 
-# ── 默认查询国家列表（应用未指定 countries 时使用）──────────
-# 覆盖全球主要市场（不含 us/cn/tw/hk/sg/ru），任一地区能搜到即视为已上架
-DEFAULT_COUNTRIES = [
-    "jp", "kr", "de", "fr", "gb", "in", "br", "au", "ca", "th",
-    "vn", "id", "my", "ph", "mx", "es", "it", "nl", "se", "pl",
-    "tr", "sa", "ae", "za",
-]
-
-DEFAULT_LANG = "en"  # 多国查询统一使用英文，避免语言问题
+DEFAULT_LANG = "en"  # 查询统一使用英文，避免语言问题
 
 
 # ── 包名加密/解密 ───────────────────────────────────────────
@@ -90,17 +82,6 @@ def encrypt_package_name(plain_str: str, encrypt_key: str) -> str:
     return f.encrypt(plain_str.encode()).decode()
 
 
-def get_app_countries(app_cfg: dict, fallback: list[str]) -> list[str]:
-    """
-    获取应用的目标上架国家列表。
-    优先使用 app_cfg.countries（按应用配置），未指定时使用 fallback。
-    """
-    app_countries = app_cfg.get("countries")
-    if app_countries and len(app_countries) > 0:
-        return app_countries
-    return fallback
-
-
 # ── 配置加载（环境变量优先，config.json 兜底）───────────
 def load_config() -> dict:
     """
@@ -109,7 +90,8 @@ def load_config() -> dict:
       TG_BOT_TOKEN, TG_CHAT_ID, GH_CONFIG_URL
       GH_TOKEN（用于自动修改 GitHub JSON）
       GITHUB_REPOSITORY（Actions 自动提供）
-      MONITOR_INTERVAL, COUNTRIES_TO_CHECK
+      ENCRYPT_KEY（包名加密密钥）
+      MONITOR_INTERVAL
     """
     file_config = {}
     if CONFIG_PATH.exists():
@@ -132,15 +114,6 @@ def load_config() -> dict:
         logger.error("缺少 GitHub 配置 URL！设置 GH_CONFIG_URL 环境变量或在 config.json 中填写")
         sys.exit(1)
 
-    # 解析国家列表：环境变量逗号分隔，或使用默认全量列表
-    countries_env = os.environ.get("COUNTRIES_TO_CHECK")
-    if countries_env:
-        countries = [c.strip() for c in countries_env.split(",") if c.strip()]
-    elif file_config.get("monitor", {}).get("countries"):
-        countries = file_config["monitor"]["countries"]
-    else:
-        countries = DEFAULT_COUNTRIES
-
     config = {
         "telegram": {
             "bot_token": bot_token,
@@ -158,11 +131,10 @@ def load_config() -> dict:
             "check_interval_minutes": int(
                 os.environ.get("MONITOR_INTERVAL") or file_config.get("monitor", {}).get("check_interval_minutes", 10)
             ),
-            "countries": countries,
             "encrypt_key": encrypt_key,
         },
     }
-    logger.info(f"配置加载完成 | Token: {bot_token[:10]}... | Chat ID: {chat_id} | 查询国家: {len(countries)}个 | GH Token: {'有' if gh_token else '无'} | 加密: {'有' if encrypt_key else '无'}")
+    logger.info(f"配置加载完成 | Token: {bot_token[:10]}... | Chat ID: {chat_id} | GH Token: {'有' if gh_token else '无'} | 加密: {'有' if encrypt_key else '无'}")
     return config
 
 
@@ -406,7 +378,6 @@ def run_check_cycle(config: dict, first_run: bool = False):
     tg = config["telegram"]
     gh = config["github"]
     mon = config["monitor"]
-    countries = mon.get("countries", DEFAULT_COUNTRIES)
     encrypt_key = mon.get("encrypt_key", "")
 
     # 1. 拉取监控列表（自动解密）
@@ -425,7 +396,13 @@ def run_check_cycle(config: dict, first_run: bool = False):
     for app_cfg in apps:
         pkg = app_cfg.get("package_name", "")
         real_pkg = app_cfg.get("package_name_decrypted", pkg)  # 解密后的真实包名
-        app_countries = get_app_countries(app_cfg, countries)
+        
+        # 每个应用必须指定 countries，否则跳过
+        app_countries = app_cfg.get("countries")
+        if not app_countries or len(app_countries) == 0:
+            logger.warning(f"⚠️ {real_pkg} 未配置 countries 字段，跳过检查（请在 monitor_apps.json 中指定上架目标国家）")
+            continue
+        
         logger.info(f"检查: {real_pkg} ({app_cfg.get('app_name', '')}) | 目标国家: {','.join(app_countries)}")
 
         play_info = check_play_store(pkg, app_countries, real_package_name=real_pkg)
@@ -490,7 +467,7 @@ def main():
         interval = config["monitor"].get("check_interval_minutes", 10) * 60
         logger.info("=" * 50)
         logger.info("本地持续运行模式启动")
-        logger.info(f"检查间隔: {interval // 60} 分钟 | 查询国家: {len(config['monitor']['countries'])}个")
+        logger.info(f"检查间隔: {interval // 60} 分钟 | 查询国家从各应用配置获取")
         logger.info("=" * 50)
 
         tg = config["telegram"]

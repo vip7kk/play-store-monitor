@@ -4,7 +4,7 @@
 
 ## ✨ 核心特性
 
-- **按应用配置上架国家**：每个应用可单独指定上架目标国家，避免盲目遍历；未指定时使用默认 24 国列表
+- **按应用配置上架国家**：每个应用必须指定上架目标国家，只查询配置的国家，无默认列表兜底
 - **包名加密**：支持 Fernet 加密存储包名，GitHub 仓库中不暴露真实包名，加密密钥通过 Secrets 管理
 - **自动清理**：应用上架后若再次下架，自动从 GitHub JSON 中删除该包名，无需手动维护
 - **状态对比**：通过 state.json 记录上次状态，仅在变化时推送通知（避免重复打扰）
@@ -75,10 +75,6 @@
       "package_name": "com.example.myapp",
       "note": "2026-07-20 提交审核",
       "countries": ["jp", "kr", "de", "fr"]
-    },
-    {
-      "package_name": "com.global.app",
-      "note": "全球上架监控（不指定 countries 则使用默认 24 国列表）"
     }
   ]
 }
@@ -87,10 +83,10 @@
 | 字段 | 必填 | 说明 |
 |------|------|------|
 | `package_name` | ✅ | 应用包名（加密或明文） |
+| `countries` | ✅ | 上架目标国家列表，只查询这些国家。**必填，未配置时跳过检查** |
 | `encrypted` | ❌ | 是否加密包名，`true` 时需配置 `ENCRYPT_KEY` 才能解密 |
 | `note` | ❌ | 备注，会显示在通知消息中 |
 | `app_name` | ❌ | 应用名称（脚本会自动从 Play Store 获取，可不填） |
-| `countries` | ❌ | 上架目标国家列表，只查询这些国家。不填则使用默认 24 国列表 |
 
 > 加密包名需要配合 `ENCRYPT_KEY` Secret 使用。加密后即使仓库是公开的，也无法看到真实包名。详见 [🔒 包名加密](#-包名加密) 章节。
 
@@ -144,7 +140,6 @@ cp config.example.json config.json
   },
   "monitor": {
     "check_interval_minutes": 10,
-    "countries": ["jp", "kr", "de", "fr", "gb", "in", "br", "au", "ca", "th", "vn", "id", "my", "ph", "mx", "es", "it", "nl", "se", "pl", "tr", "sa", "ae", "za"],
     "encrypt_key": "YOUR_FERNET_KEY"
   }
 }
@@ -208,25 +203,16 @@ Telegram 上架消息示例：
 
 ## 🌍 按应用配置上架国家
 
-每个应用可以在 `monitor_apps.json` 中通过 `countries` 字段指定上架目标国家，脚本只查询这些国家，避免无效遍历。
-
-**指定国家**：只查询应用计划上架的国家，查询更精准、更快：
+每个应用必须在 `monitor_apps.json` 中通过 `countries` 字段指定上架目标国家，脚本只查询这些国家。**未配置 countries 的应用会被跳过并记录警告日志。**
 
 ```json
 {
   "package_name": "com.example.myapp",
-  "countries": ["jp", "kr", "de"]
+  "countries": ["mx"]
 }
 ```
 
-**不指定 countries**：自动使用默认 24 国列表查询：
-
-```
-jp, kr, de, fr, gb, in, br, au, ca, th, vn, id, my, ph,
-mx, es, it, nl, se, pl, tr, sa, ae, za
-```
-
-**全局默认国家**可通过环境变量 `COUNTRIES_TO_CHECK` 或 `config.json` 的 `monitor.countries` 自定义（当应用未指定 countries 时生效）。
+> `countries` 是必填字段，没有默认列表兜底。请为每个应用明确指定上架目标国家。
 
 ## ⚙️ 参数说明
 
@@ -237,11 +223,10 @@ mx, es, it, nl, se, pl, tr, sa, ae, za
 | GitHub 配置 URL | `GH_CONFIG_URL` | `github.config_url` | monitor_apps.json 的 raw URL | - |
 | GitHub Token | `GH_TOKEN` | `github.token` | 用于自动删除下架包名 | - |
 | 加密密钥 | `ENCRYPT_KEY` | `monitor.encrypt_key` | Fernet 加密密钥（包名加密时必填） | - |
-| 查询国家 | `COUNTRIES_TO_CHECK` | `monitor.countries` | 默认国家列表（应用未指定 countries 时使用） | 24 国 |
 | 检查间隔 | `MONITOR_INTERVAL` | `monitor.check_interval_minutes` | 本地模式检查频率（分钟） | 10 |
 | 仓库 | `GITHUB_REPOSITORY` | `github.repository` | Actions 自动提供 | - |
 
-> **配置优先级**：应用级 `countries` > 环境变量 > config.json > 默认值
+> **查询国家**由各应用在 `monitor_apps.json` 的 `countries` 字段单独配置，无全局默认列表。
 
 ## 🔧 运行模式对比
 
@@ -323,11 +308,15 @@ https://api.telegram.org/bot{TOKEN}/getUpdates
 
 **Q: 应用只在某个国家上架，其他国家搜不到？**
 
-每个应用可以在 `countries` 字段中指定上架目标国家。脚本只查询这些国家，任一国家上架即视为已上架，通知中会标注发现的国家区域。如果不指定 `countries`，则使用默认 24 国列表查询。
+每个应用必须在 `countries` 字段中指定上架目标国家。脚本只查询这些国家，任一国家上架即视为已上架，通知中会标注发现的国家区域。
 
-**Q: 如何只监控特定国家，减少无效查询？**
+**Q: 如何减少无效查询？**
 
-在 `monitor_apps.json` 中为每个应用添加 `countries` 字段，只列出计划上架的国家。例如只上架日本和韩国的应用：`"countries": ["jp", "kr"]`
+在 `monitor_apps.json` 中为每个应用只列出计划上架的国家。例如只上架墨西哥的应用：`"countries": ["mx"]`
+
+**Q: 忘记配置 countries 会怎样？**
+
+未配置 `countries` 的应用会被跳过，日志中会记录警告。请确保每个应用条目都有 `countries` 字段。
 
 **Q: 下架的包名会一直占用监控资源吗？**
 
@@ -335,7 +324,7 @@ https://api.telegram.org/bot{TOKEN}/getUpdates
 
 **Q: 如何添加新的监控应用？**
 
-直接编辑 GitHub 仓库中的 `monitor_apps.json`，添加新的包名条目（建议同时指定 `countries` 目标国家）。下一轮检查会自动发现并监控新应用。
+直接编辑 GitHub 仓库中的 `monitor_apps.json`，添加新的包名条目（必须指定 `countries` 目标国家）。下一轮检查会自动发现并监控新应用。
 
 如果使用加密模式，先用 `ENCRYPT_KEY` 加密包名，再写入 JSON：
 

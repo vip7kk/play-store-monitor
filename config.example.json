@@ -1,16 +1,16 @@
 {
   "telegram": {
-    "bot_token": "YOUR_TELEGRAM_BOT_TOKEN",
-    "chat_id": "YOUR_TELEGRAM_CHAT_ID"
+    "bot_token": "YOUR_BOT_TOKEN_HERE",
+    "chat_id": "YOUR_CHAT_ID_HERE"
   },
   "github": {
     "config_url": "https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/monitor_apps.json",
     "token": "",
-    "repository": "YOUR_USERNAME/YOUR_REPO",
     "refresh_interval_minutes": 30
   },
   "monitor": {
     "check_interval_minutes": 10,
-    "countries": ["jp", "kr", "de", "fr", "gb", "in", "br", "au", "ca", "th", "vn", "id", "my", "ph", "mx", "es", "it", "nl", "se", "pl", "tr", "sa", "ae", "za"]
+    "countries": ["jp", "kr", "de", "fr", "gb", "in", "br", "au", "ca", "th", "vn", "id", "my", "ph", "mx", "es", "it", "nl", "se", "pl", "tr", "sa", "ae", "za"],
+    "encrypt_key": "YOUR_FERNET_KEY_HERE"
   }
 }

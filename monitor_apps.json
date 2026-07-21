@@ -1,14 +1,16 @@
 {
   "apps": [
     {
-      "package_name": "com.wdsfh.oiyhg",
+      "package_name": "gAAAAABqXxvZosXaR2ToFeTa4cOUR8NHIQh5XOA0Zts-UX9fso39w9qM56ehVbe_ZqWiXfr9vrOeVO4atVKYZ9Uc8_EXiOwLuw==",
+      "encrypted": true,
       "note": "待上架监控",
-      "countries": ["jp", "kr", "de", "fr", "gb", "in", "br", "au", "ca", "th", "vn", "id", "my", "ph", "mx", "es", "it", "nl", "se", "pl", "tr", "sa", "ae", "za"]
+      "countries": ["mx"]
     },
     {
-      "package_name": "com.uyxdn.zbjys",
+      "package_name": "gAAAAABqXxvZOuxu9Y3HZDhHapnWCyHxZh9iV5JY5_ckzGyUDVStGhJzvjLPp5lI_6MaIxGW70oECWTXTYAsx5SvAditCTHOOg==",
+      "encrypted": true,
       "note": "待上架监控",
-      "countries": ["jp", "kr", "de", "fr", "gb", "in", "br", "au", "ca", "th", "vn", "id", "my", "ph", "mx", "es", "it", "nl", "se", "pl", "tr", "sa", "ae", "za"]
+      "countries": ["mx"]
     }
   ]
 }

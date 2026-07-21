@@ -85,7 +85,7 @@
 
 | 字段 | 必填 | 说明 |
 |------|------|------|
-| `package_name` | ✅ | 应用包名（加密或明文） |
+| `package_name` | ✅ | 应用包名（**必填**，加密或明文均可，缺少时该条目会被跳过） |
 | `countries` | ✅ | 上架目标国家列表，只查询这些国家。**必填，未配置时跳过检查** |
 | `encrypted` | ❌ | 已废弃，不再使用（包名格式自动区分加密/明文） |
 | `note` | ❌ | 备注，会显示在通知消息中 |
@@ -364,6 +364,10 @@ https://api.telegram.org/bot{TOKEN}/getUpdates
 **Q: 如何减少无效查询？**
 
 在 `monitor_apps.json` 中为每个应用只列出计划上架的国家。例如只上架墨西哥的应用：`"countries": ["mx"]`
+
+**Q: 忘记配置 package_name 会怎样？**
+
+未配置 `package_name` 的条目会被跳过，日志中会记录错误。`package_name` 和 `countries` 都是必填字段，请确保每个应用条目都填写。
 
 **Q: 忘记配置 countries 会怎样？**
 

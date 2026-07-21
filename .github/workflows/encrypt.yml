@@ -1,0 +1,37 @@
+name: Auto Encrypt Package Names
+
+on:
+  push:
+    paths:
+      - 'monitor_apps.json'
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  encrypt:
+    runs-on: ubuntu-latest
+    # 避免无限循环：跳过由 github-actions[bot] 触发的 push（即加密脚本自己推送的 commit）
+    if: github.actor != 'github-actions[bot]'
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Encrypt plaintext package names
+        env:
+          ENCRYPT_KEY: ${{ secrets.ENCRYPT_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: python encrypt_packages.py

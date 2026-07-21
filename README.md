@@ -5,6 +5,7 @@
 ## ✨ 核心特性
 
 - **按应用配置上架国家**：每个应用可单独指定上架目标国家，避免盲目遍历；未指定时使用默认 24 国列表
+- **包名加密**：支持 Fernet 加密存储包名，GitHub 仓库中不暴露真实包名，加密密钥通过 Secrets 管理
 - **自动清理**：应用上架后若再次下架，自动从 GitHub JSON 中删除该包名，无需手动维护
 - **状态对比**：通过 state.json 记录上次状态，仅在变化时推送通知（避免重复打扰）
 - **双模式运行**：GitHub Actions 定时触发（推荐）或本地服务器持续运行
@@ -48,7 +49,24 @@
 
 #### 3. 编辑监控列表
 
-修改仓库中的 `monitor_apps.json`：
+修改仓库中的 `monitor_apps.json`，支持**加密包名**和**明文包名**两种格式：
+
+**加密包名**（推荐，仓库中不暴露真实包名）：
+
+```json
+{
+  "apps": [
+    {
+      "package_name": "gAAAAABqXxv...（加密字符串）",
+      "encrypted": true,
+      "note": "待上架监控",
+      "countries": ["mx"]
+    }
+  ]
+}
+```
+
+**明文包名**（不加密，任何人都能看到）：
 
 ```json
 {
@@ -57,11 +75,6 @@
       "package_name": "com.example.myapp",
       "note": "2026-07-20 提交审核",
       "countries": ["jp", "kr", "de", "fr"]
-    },
-    {
-      "package_name": "com.another.app",
-      "note": "待上架",
-      "countries": ["jp", "kr", "gb", "in", "br", "au", "ca", "th", "vn", "id", "my", "ph"]
     },
     {
       "package_name": "com.global.app",
@@ -73,20 +86,24 @@
 
 | 字段 | 必填 | 说明 |
 |------|------|------|
-| `package_name` | ✅ | 应用包名 |
+| `package_name` | ✅ | 应用包名（加密或明文） |
+| `encrypted` | ❌ | 是否加密包名，`true` 时需配置 `ENCRYPT_KEY` 才能解密 |
 | `note` | ❌ | 备注，会显示在通知消息中 |
 | `app_name` | ❌ | 应用名称（脚本会自动从 Play Store 获取，可不填） |
 | `countries` | ❌ | 上架目标国家列表，只查询这些国家。不填则使用默认 24 国列表 |
 
+> 加密包名需要配合 `ENCRYPT_KEY` Secret 使用。加密后即使仓库是公开的，也无法看到真实包名。详见 [🔒 包名加密](#-包名加密) 章节。
+
 #### 4. 配置 GitHub Actions Secrets
 
-进入仓库 **Settings → Secrets and variables → Actions**，添加以下 3 个 Secrets：
+进入仓库 **Settings → Secrets and variables → Actions**，添加以下 4 个 Secrets：
 
 | Secret 名称 | 值 | 说明 |
 |---|---|---|
 | `TG_BOT_TOKEN` | `123456:ABC-DEF...` | Telegram Bot Token |
 | `TG_CHAT_ID` | `-5541367556` 或 `987654321` | 目标 Chat ID（群组为负数） |
 | `GH_CONFIG_URL` | `https://raw.githubusercontent.com/用户名/仓库名/main/monitor_apps.json` | 监控列表 JSON 的 raw URL |
+| `ENCRYPT_KEY` | `tnDtrmbSFYEB3w5e_--...` | Fernet 加密密钥（包名加密时必填） |
 
 > `GITHUB_TOKEN` 由 Actions 自动提供，无需手动配置。
 
@@ -127,7 +144,8 @@ cp config.example.json config.json
   },
   "monitor": {
     "check_interval_minutes": 10,
-    "countries": ["jp", "kr", "de", "fr", "gb", "in", "br", "au", "ca", "th", "vn", "id", "my", "ph", "mx", "es", "it", "nl", "se", "pl", "tr", "sa", "ae", "za"]
+    "countries": ["jp", "kr", "de", "fr", "gb", "in", "br", "au", "ca", "th", "vn", "id", "my", "ph", "mx", "es", "it", "nl", "se", "pl", "tr", "sa", "ae", "za"],
+    "encrypt_key": "YOUR_FERNET_KEY"
   }
 }
 ```
@@ -218,6 +236,7 @@ mx, es, it, nl, se, pl, tr, sa, ae, za
 | Chat ID | `TG_CHAT_ID` | `telegram.chat_id` | 目标 Chat ID | - |
 | GitHub 配置 URL | `GH_CONFIG_URL` | `github.config_url` | monitor_apps.json 的 raw URL | - |
 | GitHub Token | `GH_TOKEN` | `github.token` | 用于自动删除下架包名 | - |
+| 加密密钥 | `ENCRYPT_KEY` | `monitor.encrypt_key` | Fernet 加密密钥（包名加密时必填） | - |
 | 查询国家 | `COUNTRIES_TO_CHECK` | `monitor.countries` | 默认国家列表（应用未指定 countries 时使用） | 24 国 |
 | 检查间隔 | `MONITOR_INTERVAL` | `monitor.check_interval_minutes` | 本地模式检查频率（分钟） | 10 |
 | 仓库 | `GITHUB_REPOSITORY` | `github.repository` | Actions 自动提供 | - |
@@ -237,9 +256,56 @@ mx, es, it, nl, se, pl, tr, sa, ae, za
 
 ## 🔐 安全说明
 
-- **GitHub Actions**：Bot Token、Chat ID 等敏感信息通过 Secrets 加密存储，代码中不包含任何密钥
+- **包名加密**：使用 Fernet（AES-128-CBC + HMAC-SHA256）对称加密，密钥通过 `ENCRYPT_KEY` Secret 管理。加密后的包名在 GitHub 仓库中显示为不可读的 base64 字符串，即使仓库公开也不会暴露真实包名
+- **GitHub Actions**：Bot Token、Chat ID、加密密钥等敏感信息通过 Secrets 加密存储，代码中不包含任何密钥
 - **本地运行**：`config.json` 不应提交到仓库（已在 .gitignore 中排除），使用 `config.example.json` 作为模板
 - **GitHub Token**：自动删除下架包名需要 Token 权限（Actions 使用自动生成的 GITHUB_TOKEN，本地运行需手动配置 Classic PAT，需 `repo` + `workflow` 权限）
+
+## 🔒 包名加密
+
+如果你不希望别人在 GitHub 仓库中看到你的应用包名，可以使用 Fernet 加密。
+
+### 生成加密密钥
+
+```bash
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+输出示例：`tnDtrmbSFYEB3w5e_--vNcN9QNOrIy0wGt1I00sqz6c=`
+
+将此密钥保存到 GitHub Secrets（`ENCRYPT_KEY`）或本地 `config.json` 的 `monitor.encrypt_key`。
+
+### 加密包名
+
+```bash
+python -c "
+from cryptography.fernet import Fernet
+key = 'YOUR_ENCRYPT_KEY'
+f = Fernet(key.encode())
+print(f.encrypt('com.example.myapp'.encode()).decode())
+"
+```
+
+输出示例：`gAAAAABqXxvZosXaR2ToFeTa4cOU...`
+
+### 在 monitor_apps.json 中使用加密包名
+
+```json
+{
+  "apps": [
+    {
+      "package_name": "gAAAAABqXxvZosXaR2ToFeTa4cOU...",
+      "encrypted": true,
+      "countries": ["mx"]
+    }
+  ]
+}
+```
+
+- 设置 `encrypted: true` 表示该包名是加密的
+- 脚本运行时自动使用 `ENCRYPT_KEY` 解密
+- 通知消息中显示的是解密后的真实包名
+- 加密和明文包名可以混合使用（部分加密、部分明文）
 
 ## 💡 常见问题
 
@@ -270,3 +336,19 @@ https://api.telegram.org/bot{TOKEN}/getUpdates
 **Q: 如何添加新的监控应用？**
 
 直接编辑 GitHub 仓库中的 `monitor_apps.json`，添加新的包名条目（建议同时指定 `countries` 目标国家）。下一轮检查会自动发现并监控新应用。
+
+如果使用加密模式，先用 `ENCRYPT_KEY` 加密包名，再写入 JSON：
+
+```bash
+python -c "
+from cryptography.fernet import Fernet
+key = 'YOUR_ENCRYPT_KEY'
+f = Fernet(key.encode())
+pkg = 'com.new.app'
+print(f'加密后: {f.encrypt(pkg.encode()).decode()}')
+"
+```
+
+**Q: 包名加密后忘记了密钥怎么办？**
+
+密钥丢失后无法解密包名。请妥善保管 `ENCRYPT_KEY`，建议同时备份到安全的地方。

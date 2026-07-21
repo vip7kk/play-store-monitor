@@ -11,6 +11,6 @@
   },
   "monitor": {
     "check_interval_minutes": 10,
-    "countries": ["us", "cn", "jp", "kr", "de", "fr", "gb", "in", "br", "ru", "au", "ca", "tw", "hk", "sg", "th", "vn", "id", "my", "ph"]
+    "countries": ["jp", "kr", "de", "fr", "gb", "in", "br", "au", "ca", "th", "vn", "id", "my", "ph", "mx", "es", "it", "nl", "se", "pl", "tr", "sa", "ae", "za"]
   }
 }

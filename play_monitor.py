@@ -9,6 +9,10 @@ Google Play Store 上架监控 + Telegram 提醒机器人
 配置来源：
   - 优先从环境变量读取（适合 Actions Secrets）
   - 环境变量缺失时从 config.json 读取（适合本地运行）
+
+特色功能：
+  - 多国查询：自动遍历多个国家/地区，任一地区上架即视为已上架
+  - 自动清理：应用上架后若再次下架，自动从 GitHub JSON 中删除该包名
 """
 
 import json
@@ -17,6 +21,8 @@ import logging
 import os
 import sys
 import argparse
+import base64
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -42,23 +48,36 @@ BASE_DIR = Path(__file__).parent
 CONFIG_PATH = BASE_DIR / "config.json"
 STATE_PATH = BASE_DIR / "state.json"
 
+# ── 多国查询列表（不限制国家时使用的默认列表）─────────────
+# 覆盖全球主要市场，任一地区能搜到即视为已上架
+DEFAULT_COUNTRIES = [
+    "us", "cn", "jp", "kr", "de", "fr", "gb", "in", "br", "ru",
+    "au", "ca", "tw", "hk", "sg", "th", "vn", "id", "my", "ph",
+    "mx", "es", "it", "nl", "se", "pl", "tr", "sa", "ae", "za",
+]
+
+DEFAULT_LANG = "en"  # 多国查询统一使用英文，避免语言问题
+
+
 # ── 配置加载（环境变量优先，config.json 兜底）───────────
 def load_config() -> dict:
     """
-    优先从环境变量读取敏感配置，缺失项从 config.json 补充。
-    环境变量命名：
-      TG_BOT_TOKEN, TG_CHAT_ID, GH_CONFIG_URL, MONITOR_INTERVAL, MONITOR_LANG, MONITOR_COUNTRY
+    优先从环境变量读取配置，缺失项从 config.json 补充。
+    环境变量：
+      TG_BOT_TOKEN, TG_CHAT_ID, GH_CONFIG_URL
+      GH_TOKEN（用于自动修改 GitHub JSON）
+      GITHUB_REPOSITORY（Actions 自动提供）
+      MONITOR_INTERVAL, COUNTRIES_TO_CHECK
     """
-    # 先尝试读 config.json
     file_config = {}
     if CONFIG_PATH.exists():
         with open(CONFIG_PATH, "r", encoding="utf-8") as f:
             file_config = json.load(f)
 
-    # 环境变量覆盖
     bot_token = os.environ.get("TG_BOT_TOKEN") or file_config.get("telegram", {}).get("bot_token", "")
     chat_id = os.environ.get("TG_CHAT_ID") or file_config.get("telegram", {}).get("chat_id", "")
     gh_url = os.environ.get("GH_CONFIG_URL") or file_config.get("github", {}).get("config_url", "")
+    gh_token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN") or file_config.get("github", {}).get("token", "")
 
     if not bot_token:
         logger.error("缺少 Bot Token！设置 TG_BOT_TOKEN 环境变量或在 config.json 中填写")
@@ -70,6 +89,15 @@ def load_config() -> dict:
         logger.error("缺少 GitHub 配置 URL！设置 GH_CONFIG_URL 环境变量或在 config.json 中填写")
         sys.exit(1)
 
+    # 解析国家列表：环境变量逗号分隔，或使用默认全量列表
+    countries_env = os.environ.get("COUNTRIES_TO_CHECK")
+    if countries_env:
+        countries = [c.strip() for c in countries_env.split(",") if c.strip()]
+    elif file_config.get("monitor", {}).get("countries"):
+        countries = file_config["monitor"]["countries"]
+    else:
+        countries = DEFAULT_COUNTRIES
+
     config = {
         "telegram": {
             "bot_token": bot_token,
@@ -77,16 +105,40 @@ def load_config() -> dict:
         },
         "github": {
             "config_url": gh_url,
-            "refresh_interval_minutes": int(os.environ.get("GH_REFRESH_INTERVAL") or file_config.get("github", {}).get("refresh_interval_minutes", 30)),
+            "token": gh_token,
+            "repository": os.environ.get("GITHUB_REPOSITORY") or file_config.get("github", {}).get("repository", ""),
+            "refresh_interval_minutes": int(
+                os.environ.get("GH_REFRESH_INTERVAL") or file_config.get("github", {}).get("refresh_interval_minutes", 30)
+            ),
         },
         "monitor": {
-            "check_interval_minutes": int(os.environ.get("MONITOR_INTERVAL") or file_config.get("monitor", {}).get("check_interval_minutes", 10)),
-            "language": os.environ.get("MONITOR_LANG") or file_config.get("monitor", {}).get("language", "en"),
-            "country": os.environ.get("MONITOR_COUNTRY") or file_config.get("monitor", {}).get("country", "us"),
+            "check_interval_minutes": int(
+                os.environ.get("MONITOR_INTERVAL") or file_config.get("monitor", {}).get("check_interval_minutes", 10)
+            ),
+            "countries": countries,
         },
     }
-    logger.info(f"配置加载完成 | Bot Token: {bot_token[:10]}... | Chat ID: {chat_id}")
+    logger.info(f"配置加载完成 | Token: {bot_token[:10]}... | Chat ID: {chat_id} | 查询国家: {len(countries)}个 | GH Token: {'有' if gh_token else '无'}")
     return config
+
+
+# ── 解析 GitHub raw URL → owner/repo/branch/path ───────────
+def parse_gh_url(raw_url: str) -> dict:
+    """
+    从 GitHub raw URL 提取 owner, repo, branch, path。
+    示例: https://raw.githubusercontent.com/vip7kk/play-store-monitor/main/monitor_apps.json
+    """
+    pattern = r"https://raw\.githubusercontent\.com/([^/]+)/([^/]+)/([^/]+)/(.+)"
+    match = re.match(pattern, raw_url)
+    if match:
+        return {
+            "owner": match.group(1),
+            "repo": match.group(2),
+            "branch": match.group(3),
+            "path": match.group(4),
+        }
+    logger.warning(f"无法解析 GitHub URL: {raw_url}")
+    return {}
 
 
 # ── 从 GitHub 拉取监控列表 ──────────────────────────────────
@@ -104,29 +156,36 @@ def fetch_monitor_list(url: str) -> list[dict]:
         return []
 
 
-# ── 检查 Play Store 状态 ───────────────────────────────────
-def check_play_store(package_name: str, lang: str = "en", country: str = "us") -> dict | None:
+# ── 检查 Play Store 状态（多国查询）───────────────────────
+def check_play_store(package_name: str, countries: list[str]) -> dict | None:
     """
-    用 google-play-scraper 查询应用详情。
-    如果应用存在返回详情 dict，不存在返回 None。
+    用 google-play-scraper 在多个国家/地区查询应用详情。
+    任一国家能搜到即视为已上架，返回第一个成功的详情。
+    全部失败则返回 None（未上架）。
     """
-    try:
-        result = gp_app(
-            app_id=package_name,
-            lang=lang,
-            country=country,
-        )
-        return {
-            "title": result.get("title", ""),
-            "score": result.get("score", 0),
-            "installs": result.get("installs", ""),
-            "version": result.get("version", ""),
-            "free": result.get("free", True),
-            "url": f"https://play.google.com/store/apps/details?id={package_name}",
-        }
-    except Exception as e:
-        logger.debug(f"{package_name} 未上架或查询失败: {e}")
-        return None
+    for country in countries:
+        try:
+            result = gp_app(
+                app_id=package_name,
+                lang=DEFAULT_LANG,
+                country=country,
+            )
+            info = {
+                "title": result.get("title", ""),
+                "score": result.get("score", 0),
+                "installs": result.get("installs", ""),
+                "version": result.get("version", ""),
+                "free": result.get("free", True),
+                "url": f"https://play.google.com/store/apps/details?id={package_name}",
+                "found_in_country": country,
+            }
+            logger.info(f"{package_name} 在 {country} 区找到上架")
+            return info
+        except Exception:
+            continue
+
+    logger.info(f"{package_name} 在所有 {len(countries)} 个国家均未找到")
+    return None
 
 
 # ── 加载 / 保存状态 ────────────────────────────────────────
@@ -170,8 +229,9 @@ def format_app_info(app_config: dict, play_info: dict | None) -> str:
     note = app_config.get("note", "")
 
     if play_info:
+        country_tag = f"（{play_info.get('found_in_country', '')} 区）" if play_info.get("found_in_country") else ""
         return (
-            f"🎉 *应用已上架！*\n\n"
+            f"🎉 *应用已上架{country_tag}！*\n\n"
             f"*应用名称*: {play_info['title']}\n"
             f"*包名*: `{pkg}`\n"
             f"*版本*: {play_info['version']}\n"
@@ -189,12 +249,81 @@ def format_app_info(app_config: dict, play_info: dict | None) -> str:
         )
 
 
+# ── 自动删除下架包名 ──────────────────────────────────────
+def remove_package_from_github(package_name: str, config: dict) -> bool:
+    """
+    应用上架后又下架时，自动从 GitHub 的 monitor_apps.json 中删除该包名。
+    使用 GitHub Contents API 读取文件 → 删除对应条目 → 提交更新。
+    """
+    gh_token = config["github"].get("token")
+    gh_url = config["github"]["config_url"]
+
+    if not gh_token:
+        logger.warning("缺少 GH_TOKEN / GITHUB_TOKEN，无法自动删除下架包名（仅发送通知）")
+        return False
+
+    url_info = parse_gh_url(gh_url)
+    if not url_info:
+        logger.warning("无法解析 GitHub URL，跳过自动删除")
+        return False
+
+    owner = url_info["owner"]
+    repo = url_info["repo"]
+    branch = url_info["branch"]
+    file_path = url_info["path"]
+    api_base = f"https://api.github.com/repos/{owner}/{repo}/contents/{file_path}"
+    headers = {
+        "Authorization": f"token {gh_token}",
+        "Accept": "application/vnd.github+json",
+    }
+
+    # 1. 获取当前文件内容 + SHA
+    try:
+        resp = requests.get(api_base, headers=headers, params={"ref": branch}, timeout=15)
+        resp.raise_for_status()
+        file_data = resp.json()
+        sha = file_data["sha"]
+        content = base64.b64decode(file_data["content"]).decode("utf-8")
+        current_json = json.loads(content)
+    except Exception as e:
+        logger.error(f"读取 GitHub JSON 失败: {e}")
+        return False
+
+    # 2. 删除对应包名
+    original_count = len(current_json.get("apps", []))
+    current_json["apps"] = [app for app in current_json.get("apps", []) if app.get("package_name") != package_name]
+    new_count = len(current_json["apps"])
+
+    if new_count == original_count:
+        logger.warning(f"{package_name} 不在 JSON 中，无需删除")
+        return True
+
+    # 3. 提交更新到 GitHub
+    new_content = json.dumps(current_json, indent=2, ensure_ascii=False)
+    encoded = base64.b64encode(new_content.encode("utf-8")).decode()
+
+    try:
+        resp = requests.put(api_base, headers=headers, json={
+            "message": f"auto: remove delisted package {package_name}",
+            "content": encoded,
+            "sha": sha,
+            "branch": branch,
+        }, timeout=15)
+        resp.raise_for_status()
+        logger.info(f"✅ 已从 GitHub JSON 中删除下架包名 {package_name}（{original_count} → {new_count}）")
+        return True
+    except Exception as e:
+        logger.error(f"更新 GitHub JSON 失败: {e}")
+        return False
+
+
 # ── 单次检查周期 ──────────────────────────────────────────
 def run_check_cycle(config: dict, first_run: bool = False):
     """执行一次完整的检查周期"""
     tg = config["telegram"]
     gh = config["github"]
     mon = config["monitor"]
+    countries = mon.get("countries", DEFAULT_COUNTRIES)
 
     # 1. 拉取监控列表
     apps = fetch_monitor_list(gh["config_url"])
@@ -207,48 +336,58 @@ def run_check_cycle(config: dict, first_run: bool = False):
     new_state = {}
 
     # 3. 逐个检查
+    packages_to_remove = []  # 收集需要从 JSON 删除的包名
+
     for app_cfg in apps:
         pkg = app_cfg["package_name"]
         logger.info(f"检查: {pkg} ({app_cfg.get('app_name', '')})")
 
-        play_info = check_play_store(pkg, mon.get("language", "en"), mon.get("country", "us"))
+        play_info = check_play_store(pkg, countries)
         is_live = play_info is not None
 
-        # 记录当前状态（仅保留 live 标记，不含 play_info，减少 state.json 大小）
         new_state[pkg] = {
             "live": is_live,
             "last_checked": datetime.now().isoformat(),
         }
 
-        # 与上次对比，检测变化
         prev = prev_state.get(pkg)
         if prev is None and first_run:
-            # Actions 首次运行：通知当前状态
             logger.info(f"首次检查 {pkg}: {'已上架' if is_live else '未上架'}")
             msg = format_app_info(app_cfg, play_info)
             send_telegram_message(tg["bot_token"], tg["chat_id"], msg)
         elif prev is None and not first_run:
-            # 非首次但有新包名加入监控列表
             logger.info(f"新增监控 {pkg}: {'已上架' if is_live else '未上架'}")
             msg = f"📋 *新增监控应用*\n\n{format_app_info(app_cfg, play_info)}"
             send_telegram_message(tg["bot_token"], tg["chat_id"], msg)
         elif not prev["live"] and is_live:
-            # 从未上架 → 上架 ✅
             logger.info(f"🎉 {pkg} 新上架！")
             msg = format_app_info(app_cfg, play_info)
             send_telegram_message(tg["bot_token"], tg["chat_id"], msg)
         elif prev["live"] and not is_live:
-            # 从上架 → 下架 ⚠️
-            logger.warning(f"⚠️ {pkg} 可能已下架")
-            msg = f"🚨 *应用可能下架！*\n\n*包名*: `{pkg}`\n*预期名称*: {app_cfg.get('app_name', '')}"
+            # 从上架 → 下架：发送通知 + 自动从 JSON 删除
+            logger.warning(f"🚨 {pkg} 已下架，将从监控列表中自动删除")
+            msg = (
+                f"🚨 *应用已下架，自动移除监控*\n\n"
+                f"*包名*: `{pkg}`\n"
+                f"*预期名称*: {app_cfg.get('app_name', '')}\n"
+                f"*备注*: 该包名已从监控列表 JSON 中自动删除，后续不再检查"
+            )
             send_telegram_message(tg["bot_token"], tg["chat_id"], msg)
+            packages_to_remove.append(pkg)
+            # 下架的包名不再保留状态
+            del new_state[pkg]
         else:
             logger.info(f"{pkg}: 状态无变化 ({'已上架' if is_live else '未上架'})")
 
-        # 避免请求过快
         time.sleep(1)
 
-    # 4. 保存新状态
+    # 4. 自动删除下架包名
+    for pkg in packages_to_remove:
+        removed = remove_package_from_github(pkg, config)
+        if not removed:
+            logger.warning(f"无法自动删除 {pkg}，下次运行时仍会检查")
+
+    # 5. 保存新状态
     save_state(new_state)
 
 
@@ -262,17 +401,16 @@ def main():
     config = load_config()
 
     if args.daemon:
-        # ── 本地持续运行模式 ──
         interval = config["monitor"].get("check_interval_minutes", 10) * 60
         logger.info("=" * 50)
         logger.info("本地持续运行模式启动")
-        logger.info(f"检查间隔: {interval // 60} 分钟")
+        logger.info(f"检查间隔: {interval // 60} 分钟 | 查询国家: {len(config['monitor']['countries'])}个")
         logger.info("=" * 50)
 
         tg = config["telegram"]
         send_telegram_message(
             tg["bot_token"], tg["chat_id"],
-            "🟢 *Play Store 监控机器人已启动（本地模式）*\n\n将定期检查应用上架状态，变化时即时通知。"
+            "🟢 *Play Store 监控机器人已启动（本地模式）*\n\n将定期检查应用上架状态，变化时即时通知。上架后下架的包名会自动从列表删除。"
         )
 
         first = True
@@ -290,7 +428,6 @@ def main():
                 logger.error(f"主循环异常: {e}")
                 time.sleep(30)
     else:
-        # ── Actions 单次运行模式 ──
         logger.info("=" * 50)
         logger.info("Actions 单次运行模式")
         logger.info("=" * 50)

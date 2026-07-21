@@ -10,7 +10,6 @@
   },
   "monitor": {
     "check_interval_minutes": 10,
-    "countries": ["jp", "kr", "de", "fr", "gb", "in", "br", "au", "ca", "th", "vn", "id", "my", "ph", "mx", "es", "it", "nl", "se", "pl", "tr", "sa", "ae", "za"],
     "encrypt_key": "YOUR_FERNET_KEY_HERE"
   }
 }

@@ -49,11 +49,11 @@ CONFIG_PATH = BASE_DIR / "config.json"
 STATE_PATH = BASE_DIR / "state.json"
 
 # ── 多国查询列表（不限制国家时使用的默认列表）─────────────
-# 覆盖全球主要市场，任一地区能搜到即视为已上架
+# 覆盖全球主要市场（不含 us/cn/tw/hk/sg/ru），任一地区能搜到即视为已上架
 DEFAULT_COUNTRIES = [
-    "us", "cn", "jp", "kr", "de", "fr", "gb", "in", "br", "ru",
-    "au", "ca", "tw", "hk", "sg", "th", "vn", "id", "my", "ph",
-    "mx", "es", "it", "nl", "se", "pl", "tr", "sa", "ae", "za",
+    "jp", "kr", "de", "fr", "gb", "in", "br", "au", "ca", "th",
+    "vn", "id", "my", "ph", "mx", "es", "it", "nl", "se", "pl",
+    "tr", "sa", "ae", "za",
 ]
 
 DEFAULT_LANG = "en"  # 多国查询统一使用英文，避免语言问题

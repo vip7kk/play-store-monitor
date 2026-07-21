@@ -4,7 +4,7 @@
 
 ## ✨ 核心特性
 
-- **多国查询**：自动遍历 24 个国家/地区，任一地区上架即视为已上架
+- **按应用配置上架国家**：每个应用可单独指定上架目标国家，避免盲目遍历；未指定时使用默认 24 国列表
 - **自动清理**：应用上架后若再次下架，自动从 GitHub JSON 中删除该包名，无需手动维护
 - **状态对比**：通过 state.json 记录上次状态，仅在变化时推送通知（避免重复打扰）
 - **双模式运行**：GitHub Actions 定时触发（推荐）或本地服务器持续运行
@@ -55,17 +55,28 @@
   "apps": [
     {
       "package_name": "com.example.myapp",
-      "note": "2026-07-20 提交审核"
+      "note": "2026-07-20 提交审核",
+      "countries": ["jp", "kr", "de", "fr"]
     },
     {
       "package_name": "com.another.app",
-      "note": "待上架"
+      "note": "待上架",
+      "countries": ["jp", "kr", "gb", "in", "br", "au", "ca", "th", "vn", "id", "my", "ph"]
+    },
+    {
+      "package_name": "com.global.app",
+      "note": "全球上架监控（不指定 countries 则使用默认 24 国列表）"
     }
   ]
 }
 ```
 
-> `app_name` 字段可选，脚本会自动从 Play Store 获取实际应用名称。
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| `package_name` | ✅ | 应用包名 |
+| `note` | ❌ | 备注，会显示在通知消息中 |
+| `app_name` | ❌ | 应用名称（脚本会自动从 Play Store 获取，可不填） |
+| `countries` | ❌ | 上架目标国家列表，只查询这些国家。不填则使用默认 24 国列表 |
 
 #### 4. 配置 GitHub Actions Secrets
 
@@ -146,7 +157,7 @@ python play_monitor.py --daemon --first-run
 | 场景 | 通知内容 |
 |------|----------|
 | **首次检查** | 每个应用的当前上架状态（需 `--first-run` 或 Actions `first_run=true`） |
-| **新上架** 🎉 | 应用详情（名称、版本、评分、安装量、发现区域） |
+| **新上架** 🎉 | 应用详情（名称、版本、评分、安装量、发现区域、目标国家） |
 | **新增监控** 📋 | 新加入 JSON 的应用首次检查结果 |
 | **疑似下架** 🚨 | 下架通知 + **自动从 JSON 删除包名** |
 | **状态不变** | 静默，只记录日志 |
@@ -154,7 +165,7 @@ python play_monitor.py --daemon --first-run
 Telegram 上架消息示例：
 
 ```
-🎉 应用已上架（us 区）！
+🎉 应用已上架（jp 区）！
 
 应用名称: My App
 包名: com.example.myapp
@@ -162,6 +173,7 @@ Telegram 上架消息示例：
 评分: 4.5
 安装量: 10,000+
 备注: 2026-07-20 提交审核
+目标国家: jp, kr, de, fr
 
 查看应用 → https://play.google.com/store/apps/details?id=com.example.myapp
 ```
@@ -176,24 +188,27 @@ Telegram 上架消息示例：
 备注: 该包名已从监控列表 JSON 中自动删除，后续不再检查
 ```
 
-## 🌍 多国查询
+## 🌍 按应用配置上架国家
 
-默认查询以下 24 个国家/地区，任一国家发现应用即视为已上架：
+每个应用可以在 `monitor_apps.json` 中通过 `countries` 字段指定上架目标国家，脚本只查询这些国家，避免无效遍历。
+
+**指定国家**：只查询应用计划上架的国家，查询更精准、更快：
+
+```json
+{
+  "package_name": "com.example.myapp",
+  "countries": ["jp", "kr", "de"]
+}
+```
+
+**不指定 countries**：自动使用默认 24 国列表查询：
 
 ```
 jp, kr, de, fr, gb, in, br, au, ca, th, vn, id, my, ph,
 mx, es, it, nl, se, pl, tr, sa, ae, za
 ```
 
-可通过环境变量 `COUNTRIES_TO_CHECK` 或 `config.json` 自定义国家列表：
-
-```bash
-# Actions 中设置环境变量（Settings → Secrets → Actions → Variables）
-COUNTRIES_TO_CHECK=us,cn,jp,kr
-
-# 本地 config.json
-"countries": ["us", "cn", "jp", "kr"]
-```
+**全局默认国家**可通过环境变量 `COUNTRIES_TO_CHECK` 或 `config.json` 的 `monitor.countries` 自定义（当应用未指定 countries 时生效）。
 
 ## ⚙️ 参数说明
 
@@ -203,11 +218,11 @@ COUNTRIES_TO_CHECK=us,cn,jp,kr
 | Chat ID | `TG_CHAT_ID` | `telegram.chat_id` | 目标 Chat ID | - |
 | GitHub 配置 URL | `GH_CONFIG_URL` | `github.config_url` | monitor_apps.json 的 raw URL | - |
 | GitHub Token | `GH_TOKEN` | `github.token` | 用于自动删除下架包名 | - |
-| 查询国家 | `COUNTRIES_TO_CHECK` | `monitor.countries` | 查询国家列表（逗号分隔） | 24 国 |
+| 查询国家 | `COUNTRIES_TO_CHECK` | `monitor.countries` | 默认国家列表（应用未指定 countries 时使用） | 24 国 |
 | 检查间隔 | `MONITOR_INTERVAL` | `monitor.check_interval_minutes` | 本地模式检查频率（分钟） | 10 |
 | 仓库 | `GITHUB_REPOSITORY` | `github.repository` | Actions 自动提供 | - |
 
-> **配置优先级**：环境变量 > config.json > 默认值
+> **配置优先级**：应用级 `countries` > 环境变量 > config.json > 默认值
 
 ## 🔧 运行模式对比
 
@@ -242,7 +257,11 @@ https://api.telegram.org/bot{TOKEN}/getUpdates
 
 **Q: 应用只在某个国家上架，其他国家搜不到？**
 
-本项目支持多国查询，默认遍历 24 个国家，任一国家上架即视为已上架。通知中会标注发现的国家区域。
+每个应用可以在 `countries` 字段中指定上架目标国家。脚本只查询这些国家，任一国家上架即视为已上架，通知中会标注发现的国家区域。如果不指定 `countries`，则使用默认 24 国列表查询。
+
+**Q: 如何只监控特定国家，减少无效查询？**
+
+在 `monitor_apps.json` 中为每个应用添加 `countries` 字段，只列出计划上架的国家。例如只上架日本和韩国的应用：`"countries": ["jp", "kr"]`
 
 **Q: 下架的包名会一直占用监控资源吗？**
 
@@ -250,4 +269,4 @@ https://api.telegram.org/bot{TOKEN}/getUpdates
 
 **Q: 如何添加新的监控应用？**
 
-直接编辑 GitHub 仓库中的 `monitor_apps.json`，添加新的包名条目。下一轮检查会自动发现并监控新应用。
+直接编辑 GitHub 仓库中的 `monitor_apps.json`，添加新的包名条目（建议同时指定 `countries` 目标国家）。下一轮检查会自动发现并监控新应用。

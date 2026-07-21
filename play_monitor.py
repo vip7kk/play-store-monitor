@@ -12,7 +12,7 @@ Google Play Store 上架监控 + Telegram 提醒机器人
 
 特色功能：
   - 按应用配置上架国家：每个应用必须指定上架目标国家，只查询配置的国家
-  - 包名加密：支持 Fernet 加密存储包名，GitHub 仓库中不暴露真实包名
+  - 包名强制加密：所有包名使用 Fernet 加密存储，GitHub 仓库中不暴露真实包名，明文推送后自动加密
   - 自动清理：应用上架后若再次下架，自动从 GitHub JSON 中删除该包名
 """
 
@@ -59,13 +59,25 @@ DEFAULT_LANG = "en"  # 查询统一使用英文，避免语言问题
 
 
 # ── 包名加密/解密 ───────────────────────────────────────────
-def decrypt_package_name(encrypted_str: str, encrypt_key: str | None) -> str:
+FERNET_PREFIX = "gAAAAA"  # Fernet 加密 token 固定前缀（version byte 0x80 → base64 "gAAAAA")
+
+
+def is_fernet_token(s: str) -> bool:
+    """判断字符串是否是 Fernet 加密 token"""
+    return s.startswith(FERNET_PREFIX)
+
+
+def decrypt_package_name(encrypted_str: str, encrypt_key: str) -> str:
     """
-    解密 Fernet 加密的包名。
-    如果 encrypt_key 为空或加密库不可用，返回原始字符串。
+    强制解密 Fernet 加密的包名。
+    encrypt_key 为空时直接报错退出，不允许明文包名运行。
     """
-    if not encrypt_key or not HAS_CRYPTO:
-        return encrypted_str
+    if not encrypt_key:
+        logger.error("缺少 ENCRYPT_KEY！包名强制加密模式下必须提供解密密钥")
+        sys.exit(1)
+    if not HAS_CRYPTO:
+        logger.error("缺少 cryptography 库，无法解密包名")
+        sys.exit(1)
     try:
         f = Fernet(encrypt_key.encode())
         return f.decrypt(encrypted_str.encode()).decode()
@@ -113,6 +125,9 @@ def load_config() -> dict:
     if not gh_url:
         logger.error("缺少 GitHub 配置 URL！设置 GH_CONFIG_URL 环境变量或在 config.json 中填写")
         sys.exit(1)
+    if not encrypt_key:
+        logger.error("缺少 ENCRYPT_KEY！包名强制加密模式下必须提供密钥")
+        sys.exit(1)
 
     config = {
         "telegram": {
@@ -158,8 +173,8 @@ def parse_gh_url(raw_url: str) -> dict:
 
 
 # ── 从 GitHub 拉取监控列表 ──────────────────────────────────
-def fetch_monitor_list(url: str, encrypt_key: str | None = None) -> list[dict]:
-    """从 GitHub raw URL 拉取 JSON 文件，返回 app 列表（自动解密加密包名）"""
+def fetch_monitor_list(url: str, encrypt_key: str = "") -> list[dict]:
+    """从 GitHub raw URL 拉取 JSON 文件，返回 app 列表（强制解密所有包名）"""
     try:
         resp = requests.get(url, timeout=30)
         resp.raise_for_status()
@@ -167,18 +182,20 @@ def fetch_monitor_list(url: str, encrypt_key: str | None = None) -> list[dict]:
         apps = data.get("apps", [])
         logger.info(f"从 GitHub 拉取到 {len(apps)} 个应用")
 
-        # 解密加密的包名
+        # 强制解密所有包名（包名一律为加密格式）
         for app_cfg in apps:
-            if app_cfg.get("encrypted", False) and encrypt_key:
-                original = app_cfg["package_name"]
-                decrypted = decrypt_package_name(original, encrypt_key)
-                if decrypted != original:
-                    app_cfg["package_name_decrypted"] = decrypted
-                    logger.info(f"包名已解密: {original[:20]}... → {decrypted}")
-                else:
-                    logger.warning(f"包名解密失败，使用原始值: {original[:20]}...")
-            elif app_cfg.get("encrypted", False) and not encrypt_key:
-                logger.warning(f"应用 {app_cfg.get('package_name', '')[:20]}... 标记为加密，但缺少 ENCRYPT_KEY，无法解密")
+            original = app_cfg.get("package_name", "")
+            # 清理可能残留的 encrypted 字段
+            if "encrypted" in app_cfg:
+                del app_cfg["encrypted"]
+            if not original:
+                continue
+            decrypted = decrypt_package_name(original, encrypt_key)
+            if decrypted != original:
+                app_cfg["package_name_decrypted"] = decrypted
+                logger.info(f"包名已解密: {original[:20]}... → {decrypted}")
+            else:
+                logger.warning(f"包名解密结果与原文相同，可能密钥错误: {original[:20]}...")
 
         return apps
     except Exception as e:
@@ -288,7 +305,7 @@ def format_app_info(app_config: dict, play_info: dict | None, app_countries: lis
 
 
 # ── 自动删除下架包名 ──────────────────────────────────────
-def remove_package_from_github(package_name: str, config: dict, encrypt_key: str | None = None) -> bool:
+def remove_package_from_github(package_name: str, config: dict, encrypt_key: str) -> bool:
     """
     应用上架后又下架时，自动从 GitHub 的 monitor_apps.json 中删除该包名。
     使用 GitHub Contents API 读取文件 → 删除对应条目 → 提交更新。
@@ -330,21 +347,15 @@ def remove_package_from_github(package_name: str, config: dict, encrypt_key: str
         logger.error(f"读取 GitHub JSON 失败: {e}")
         return False
 
-    # 2. 删除对应包名（匹配加密或明文包名）
+    # 2. 删除对应包名（解密后匹配真实包名）
     original_count = len(current_json.get("apps", []))
     new_apps = []
     for app in current_json.get("apps", []):
         stored_name = app.get("package_name", "")
-        is_encrypted = app.get("encrypted", False)
-        
-        # 如果是加密包名，解密后比较；否则直接比较
-        if is_encrypted and encrypt_key:
-            decrypted_name = decrypt_package_name(stored_name, encrypt_key)
-            if decrypted_name != package_name:
-                new_apps.append(app)
-        else:
-            if stored_name != package_name:
-                new_apps.append(app)
+        # 所有包名都是加密格式，解密后比较
+        decrypted_name = decrypt_package_name(stored_name, encrypt_key)
+        if decrypted_name != package_name:
+            new_apps.append(app)
     
     current_json["apps"] = new_apps
     new_count = len(current_json["apps"])

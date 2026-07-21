@@ -146,9 +146,9 @@ def encrypt_plain_packages(config: dict) -> bool:
     encrypted_names = []
 
     for app_cfg in apps:
-        pkg = app_cfg.get("package_name", "")
+        pkg = app_cfg.get("package_name")
         if not pkg:
-            logger.warning("跳过空包名条目")
+            logger.error("⚠️ 条目缺少必填字段 package_name，跳过")
             continue
 
         # 清理多余的 "encrypted" 字段

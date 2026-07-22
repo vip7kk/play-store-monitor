@@ -12,6 +12,7 @@ Google Play Store 上架监控 + Telegram 提醒机器人
 
 特色功能：
   - 按应用配置上架国家：每个应用必须指定上架目标国家，只查询配置的国家
+  - 按提交类型配置查询频率：首次提交（version=1）24h内不查、之后4h/6h一查；更新（version≥2）3h一查；周日一律不查
   - 包名强制加密：所有包名使用 Fernet 加密存储，GitHub 仓库中不暴露真实包名，明文推送后自动加密
   - 自动清理：应用上架后若再次下架，自动从 GitHub JSON 中删除该包名
 """
@@ -241,6 +242,71 @@ def check_play_store(package_name: str, countries: list[str], real_package_name:
     return None
 
 
+# ── 查询频率调度 ──────────────────────────────────────────
+def should_check_app(app_cfg: dict, prev_state: dict, now: datetime) -> tuple[bool, str]:
+    """
+    根据提交类型（version）和当前时间判断是否应该检查某个应用。
+
+    规则：
+      - version=1（首次提交上架）：
+        · submit_time 后 24 小时内不查询
+        · 24 小时后：工作日每 4 小时，周六每 6 小时
+        · 周日不查询
+      - version≥2（更新）：
+        · 每 3 小时查询一次
+        · 周日不查询
+      - 缺少 version 字段：默认按更新模式（version=2）处理
+
+    返回 (should_check, reason)
+    """
+    real_pkg = app_cfg.get("package_name_decrypted", app_cfg.get("package_name", ""))
+    version = app_cfg.get("version")
+
+    if version is None:
+        logger.warning(f"⚠️ {real_pkg} 缺少 version 字段，默认按更新模式（3 小时间隔）处理")
+        version = 2
+
+    # 周日一律不查询（weekday() 返回 6 = Sunday）
+    if now.weekday() == 6:
+        return False, "周日不查询"
+
+    if version == 1:
+        # 首次提交：24 小时内不查询
+        submit_time = app_cfg.get("submit_time")
+        if submit_time:
+            try:
+                submit_dt = datetime.fromisoformat(submit_time)
+                hours_since_submit = (now - submit_dt).total_seconds() / 3600
+                if hours_since_submit < 24:
+                    return False, f"首次提交后 {hours_since_submit:.1f}h，24h内不查询"
+            except (ValueError, TypeError):
+                logger.warning(f"⚠️ {real_pkg} submit_time 格式无效: {submit_time}")
+        else:
+            logger.warning(f"⚠️ {real_pkg} 首次提交(version=1)缺少 submit_time，24h延迟无法生效")
+
+        # 确定查询间隔
+        if now.weekday() == 5:  # 周六
+            interval_hours = 6
+        else:  # 工作日
+            interval_hours = 4
+    else:
+        # 更新模式
+        interval_hours = 3
+
+    # 判断距上次检查的时间
+    prev = prev_state.get(real_pkg)
+    if prev and prev.get("last_checked"):
+        try:
+            last_dt = datetime.fromisoformat(prev["last_checked"])
+            hours_since_last = (now - last_dt).total_seconds() / 3600
+            if hours_since_last < interval_hours:
+                return False, f"距上次检查 {hours_since_last:.1f}h，需间隔 {interval_hours}h"
+        except (ValueError, TypeError):
+            pass  # 格式错误，直接检查
+
+    return True, ""
+
+
 # ── 加载 / 保存状态 ────────────────────────────────────────
 def load_state() -> dict:
     """加载上次保存的状态文件"""
@@ -392,6 +458,7 @@ def run_check_cycle(config: dict, first_run: bool = False):
     gh = config["github"]
     mon = config["monitor"]
     encrypt_key = mon.get("encrypt_key", "")
+    now = datetime.now()
 
     # 1. 拉取监控列表（自动解密）
     apps = fetch_monitor_list(gh["config_url"], encrypt_key=encrypt_key)
@@ -403,7 +470,7 @@ def run_check_cycle(config: dict, first_run: bool = False):
     prev_state = load_state()
     new_state = {}
 
-    # 3. 逐个检查
+    # 3. 逐个检查（根据频率调度决定是否查询）
     packages_to_remove = []  # 收集需要从 JSON 删除的包名
 
     for app_cfg in apps:
@@ -418,9 +485,21 @@ def run_check_cycle(config: dict, first_run: bool = False):
         app_countries = app_cfg.get("countries")
         if not app_countries or len(app_countries) == 0:
             logger.warning(f"⚠️ {real_pkg} 未配置 countries 字段，跳过检查（请在 monitor_apps.json 中指定上架目标国家）")
+            # 保留之前的状态
+            if real_pkg in prev_state:
+                new_state[real_pkg] = prev_state[real_pkg]
             continue
-        
-        logger.info(f"检查: {real_pkg} ({app_cfg.get('app_name', '')}) | 目标国家: {','.join(app_countries)}")
+
+        # 根据提交类型和频率调度判断是否应该查询
+        should_check, reason = should_check_app(app_cfg, prev_state, now)
+        if not should_check:
+            logger.info(f"⏭️ {real_pkg}: {reason}")
+            # 保留之前的状态（不更新 last_checked）
+            if real_pkg in prev_state:
+                new_state[real_pkg] = prev_state[real_pkg]
+            continue
+
+        logger.info(f"检查: {real_pkg} (version={app_cfg.get('version', '?')}) | 目标国家: {','.join(app_countries)}")
 
         play_info = check_play_store(pkg, app_countries, real_package_name=real_pkg)
         is_live = play_info is not None

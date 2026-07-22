@@ -58,6 +58,36 @@ STATE_PATH = BASE_DIR / "state.json"
 
 DEFAULT_LANG = "en"  # 查询统一使用英文，避免语言问题
 
+# ── 国家码 → 完整国家名称映射 ────────────────────────────────
+COUNTRY_NAMES = {
+    "us": "美国", "cn": "中国", "jp": "日本", "kr": "韩国",
+    "de": "德国", "fr": "法国", "gb": "英国", "uk": "英国",
+    "in": "印度", "br": "巴西", "au": "澳大利亚", "ca": "加拿大",
+    "th": "泰国", "vn": "越南", "id": "印度尼西亚", "my": "马来西亚",
+    "ph": "菲律宾", "mx": "墨西哥", "es": "西班牙", "it": "意大利",
+    "nl": "荷兰", "se": "瑞典", "pl": "波兰", "tr": "土耳其",
+    "sa": "沙特阿拉伯", "ae": "阿联酋", "za": "南非",
+    "ru": "俄罗斯", "tw": "中国台湾", "hk": "中国香港", "sg": "新加坡",
+    "nz": "新西兰", "ie": "爱尔兰", "be": "比利时", "ch": "瑞士",
+    "at": "奥地利", "pt": "葡萄牙", "gr": "希腊", "dk": "丹麦",
+    "no": "挪威", "fi": "芬兰", "cz": "捷克", "hu": "匈牙利",
+    "ro": "罗马尼亚", "bg": "保加利亚", "sk": "斯洛伐克", "hr": "克罗地亚",
+    "si": "斯洛文尼亚", "lt": "立陶宛", "lv": "拉脱维亚", "ee": "爱沙尼亚",
+    "il": "以色列", "eg": "埃及", "ng": "尼日利亚", "ke": "肯尼亚",
+    "ar": "阿根廷", "cl": "智利", "co": "哥伦比亚", "pe": "秘鲁",
+    "ve": "委内瑞拉", "pk": "巴基斯坦", "bd": "孟加拉国", "lk": "斯里兰卡",
+}
+
+
+def country_code_to_name(code: str) -> str:
+    """将国家码转换为完整国家名称，未找到时返回原始代码"""
+    return COUNTRY_NAMES.get(code.lower(), code)
+
+
+def countries_to_names(codes: list[str]) -> list[str]:
+    """将国家码列表转换为完整国家名称列表"""
+    return [country_code_to_name(c) for c in codes]
+
 
 # ── 包名加密/解密 ───────────────────────────────────────────
 FERNET_PREFIX = "gAAAAA"  # Fernet 加密 token 固定前缀（version byte 0x80 → base64 "gAAAAA")
@@ -233,7 +263,7 @@ def check_play_store(package_name: str, countries: list[str], real_package_name:
                 "url": f"https://play.google.com/store/apps/details?id={query_pkg}",
                 "found_in_country": country,
             }
-            logger.info(f"{query_pkg} 在 {country} 区找到上架")
+            logger.info(f"{query_pkg} 在 {country_code_to_name(country)} 找到上架")
             return info
         except Exception:
             continue
@@ -380,10 +410,15 @@ def format_app_info(app_config: dict, play_info: dict | None, app_countries: lis
     note = app_config.get("note", "")
     countries_str = ""
     if app_countries:
-        countries_str = f"\n*目标国家*: {', '.join(app_countries)}"
+        # 国家码转换为完整国家名称
+        country_names = countries_to_names(app_countries)
+        countries_str = f"\n*目标国家*: {', '.join(country_names)}"
 
     if play_info:
-        country_tag = f"（{play_info.get('found_in_country', '')} 区）" if play_info.get("found_in_country") else ""
+        # 上架国家也显示完整名称，不写"区"
+        found_country_code = play_info.get("found_in_country", "")
+        found_country_name = country_code_to_name(found_country_code) if found_country_code else ""
+        country_tag = f"（{found_country_name}）" if found_country_name else ""
         return (
             f"🎉 *应用已上架{country_tag}！*\n\n"
             f"*应用名称*: {play_info['title']}\n"
@@ -530,7 +565,7 @@ def run_check_cycle(config: dict, first_run: bool = False):
                 new_state[real_pkg] = prev_state[real_pkg]
             continue
 
-        logger.info(f"检查: {real_pkg} (version={app_cfg.get('version', '?')}) | 目标国家: {','.join(app_countries)}")
+        logger.info(f"检查: {real_pkg} (version={app_cfg.get('version', '?')}) | 目标国家: {','.join(countries_to_names(app_countries))}")
 
         play_info = check_play_store(pkg, app_countries, real_package_name=real_pkg)
         is_live = play_info is not None

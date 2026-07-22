@@ -3,19 +3,25 @@
     {
       "package_name": "gAAAAABqXxvZosXaR2ToFeTa4cOUR8NHIQh5XOA0Zts-UX9fso39w9qM56ehVbe_ZqWiXfr9vrOeVO4atVKYZ9Uc8_EXiOwLuw==",
       "note": "待上架监控",
-      "countries": ["mx"],
+      "countries": [
+        "mx"
+      ],
       "version": 1
     },
     {
       "package_name": "gAAAAABqXxvZOuxu9Y3HZDhHapnWCyHxZh9iV5JY5_ckzGyUDVStGhJzvjLPp5lI_6MaIxGW70oECWTXTYAsx5SvAditCTHOOg==",
       "note": "待上架监控",
-      "countries": ["mx"],
+      "countries": [
+        "mx"
+      ],
       "version": 1
     },
     {
-      "package_name": "com.beys.iidgw",
+      "package_name": "gAAAAABqYGj7aRAYGBFGyo8v1Gu6Pv9fJxBlZ2h8leD1QSUHXKyeNuJe2W6ft2idDC3-bwVRXSnt1iPQhAoZUez-dec-JvkXvA==",
       "note": "chris04",
-      "countries": ["mx"],
+      "countries": [
+        "mx"
+      ],
       "version": 1
     }
   ]

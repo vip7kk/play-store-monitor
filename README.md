@@ -5,7 +5,7 @@
 ## ✨ 核心特性
 
 - **按应用配置上架国家**：每个应用必须指定上架目标国家，只查询配置的国家，无默认列表兜底
-- **按提交类型配置查询频率**：首次提交（version=1）24h 内不查，之后工作日 4h/周六 6h；更新（version≥2）每 3h；周日一律不查
+- **按提交类型配置查询频率**：首次提交（version=1）24h 内不查，之后工作日 4h/周六 6h；更新（version≥2）每 3h；周日一律不查。通过 state.json 比对 version 自动识别首次/更新
 - **包名强制加密**：推送明文包名到 GitHub 后自动加密，仓库中永远只存储加密后的包名，不允许明文，无需手动加密
 - **自动清理**：应用上架后若再次下架，自动从 GitHub JSON 中删除该包名，无需手动维护
 - **状态对比**：通过 state.json 记录上次状态，仅在变化时推送通知（避免重复打扰）
@@ -63,8 +63,7 @@
       "package_name": "com.example.myapp",
       "note": "2026-07-20 提交审核",
       "countries": ["mx"],
-      "version": 1,
-      "submit_time": "2026-07-20T10:00:00"
+      "version": 1
     }
   ]
 }
@@ -81,8 +80,7 @@
       "package_name": "gAAAAABqXxv...（加密字符串）",
       "note": "待上架监控",
       "countries": ["mx"],
-      "version": 1,
-      "submit_time": "2026-07-20T10:00:00"
+      "version": 1
     }
   ]
 }
@@ -92,8 +90,7 @@
 |------|------|------|
 | `package_name` | ✅ | 应用包名（**必填**，加密或明文均可，缺少时该条目会被跳过） |
 | `countries` | ✅ | 上架目标国家列表，只查询这些国家。**必填，未配置时跳过检查** |
-| `version` | ✅ | 提交类型版本号。**1 = 首次提交上架**，**≥2 = 更新**，决定查询频率 |
-| `submit_time` | version=1 时必填 | 提交审核时间（ISO 8601），首次提交后 24h 内不查询。更新模式无需此字段 |
+| `version` | ✅ | 提交类型版本号。**1 = 首次提交上架**，**≥2 = 更新**，决定查询频率。首次/更新通过 state.json 比对自动识别 |
 | `encrypted` | ❌ | 已废弃，不再使用（包名格式自动区分加密/明文） |
 | `note` | ❌ | 备注，会显示在通知消息中 |
 | `app_name` | ❌ | 应用名称（脚本会自动从 Play Store 获取，可不填） |
@@ -226,14 +223,14 @@ Telegram 上架消息示例：
 
 ## ⏱️ 查询频率调度
 
-每个应用通过 `version` 字段区分提交类型，不同类型使用不同的查询频率：
+每个应用通过 `version` 字段区分提交类型，不同类型使用不同的查询频率。首次/更新通过 `state.json` 比对 `version` 自动识别：
 
 | 提交类型 | version | 查询频率 | 周六 | 周日 |
 |----------|---------|----------|------|------|
-| **首次提交上架** | 1 | 提交后 24h 内不查，之后每 4h | 每 6h | 不查 |
+| **首次提交上架** | 1 | 首次发现后 24h 内不查，之后每 4h | 每 6h | 不查 |
 | **更新** | ≥2 | 每 3h | 每 3h | 不查 |
 
-> 缺少 `version` 字段时默认按更新模式（每 3h）处理。
+> 缺少 `version` 字段时默认按更新模式（每 3h）处理。首次/更新识别不再需要 `submit_time`，脚本通过 `state.json` 中的 `first_seen_time` 和 `version` 比对自动判断。
 
 ### 首次提交上架示例
 
@@ -241,12 +238,11 @@ Telegram 上架消息示例：
 {
   "package_name": "com.example.myapp",
   "countries": ["mx"],
-  "version": 1,
-  "submit_time": "2026-07-20T10:00:00"
+  "version": 1
 }
 ```
 
-- `submit_time` 是提交审核的时间，用于计算 24 小时延迟
+- 首次出现在 `monitor_apps.json` 中的应用，脚本自动在 `state.json` 中记录 `first_seen_time`（当前时间）
 - 24 小时后才开始查询，工作日每 4 小时、周六每 6 小时
 
 ### 更新示例
@@ -260,6 +256,7 @@ Telegram 上架消息示例：
 }
 ```
 
+- 将 `version` 从 `1` 改为 `2`（或更大值），脚本比对 `state.json` 中记录的旧 version 后识别为更新
 - 更新模式无需 `submit_time`，直接按 3 小时间隔查询
 - 周日不查询
 
@@ -268,7 +265,8 @@ Telegram 上架消息示例：
 GitHub Actions 每小时触发一次脚本（周一至周六），脚本内部根据每个应用的 `version` 和上次检查时间判断是否应该查询：
 - 未到查询间隔 → 跳过并保留上次状态
 - 周日 → 全部跳过
-- 首次提交 24h 内 → 跳过
+- 首次提交 24h 内 → 跳过（`first_seen_time` 在首次出现时自动记录到 `state.json`）
+- version 变化 → 自动识别为更新，切换查询频率
 
 ## ⚙️ 参数说明
 
@@ -360,8 +358,7 @@ python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().d
       "package_name": "com.example.myapp",
       "note": "2026-07 提交审核",
       "countries": ["mx"],
-      "version": 1,
-      "submit_time": "2026-07-20T10:00:00"
+      "version": 1
     }
   ]
 }
@@ -376,8 +373,7 @@ push 后几秒钟，workflow 自动完成加密，文件变为：
       "package_name": "gAAAAABqXxvZosXaR2ToFeTa4cOU...",
       "note": "2026-07 提交审核",
       "countries": ["mx"],
-      "version": 1,
-      "submit_time": "2026-07-20T10:00:00"
+      "version": 1
     }
   ]
 }
@@ -438,13 +434,16 @@ https://api.telegram.org/bot{TOKEN}/getUpdates
 
 缺少 `version` 字段时默认按更新模式（每 3 小时）处理。建议明确填写，首次提交上架填 `1`，更新填 `2` 或更大值。
 
-**Q: 忘记配置 submit_time 会怎样？**
+**Q: 如何判断首次提交还是更新？**
 
-`version=1`（首次提交）时缺少 `submit_time`，24 小时延迟无法生效，会直接开始查询。建议首次提交时务必填写 `submit_time`。更新模式（version≥2）无需此字段。
+脚本通过 `state.json` 自动判断：
+- 应用首次出现在 `monitor_apps.json` 中（不在 state 里）→ 首次提交，自动记录 `first_seen_time`，24h 后开始查询
+- 将应用的 `version` 从 `1` 改为 `2` 或更大值 → 更新，脚本比对 state 中记录的旧 version 后自动切换查询频率
+- 不需要手动填写 `submit_time`，首次发现的自动记录时间
 
 **Q: 如何添加新的监控应用？**
 
-直接编辑 GitHub 仓库中的 `monitor_apps.json`，添加新的包名条目（必须指定 `countries` 和 `version`）。首次提交填 `"version": 1` + `submit_time`，更新填 `"version": 2`。**直接写明文包名即可，push 后自动加密**，无需手动加密。下一轮检查会自动发现并监控新应用。
+直接编辑 GitHub 仓库中的 `monitor_apps.json`，添加新的包名条目（必须指定 `countries` 和 `version`）。首次提交填 `"version": 1`，更新填 `"version": 2`。**直接写明文包名即可，push 后自动加密**，无需手动加密。脚本会自动记录首次发现时间，24h 后开始查询。
 
 **Q: 包名加密后忘记了密钥怎么办？**
 

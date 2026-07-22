@@ -12,7 +12,7 @@ Google Play Store 上架监控 + Telegram 提醒机器人
 
 特色功能：
   - 按应用配置上架国家：每个应用必须指定上架目标国家，只查询配置的国家
-  - 按提交类型配置查询频率：首次提交（version=1）24h内不查、之后4h/6h一查；更新（version≥2）3h一查；周日一律不查
+  - 按提交类型配置查询频率：首次提交（version=1）24h内不查、之后4h/6h一查；更新（version≥2）3h一查；周日一律不查。通过 state.json 比对 version 自动识别首次/更新，无需手动填 submit_time
   - 包名强制加密：所有包名使用 Fernet 加密存储，GitHub 仓库中不暴露真实包名，明文推送后自动加密
   - 自动清理：应用上架后若再次下架，自动从 GitHub JSON 中删除该包名
 """
@@ -247,9 +247,14 @@ def should_check_app(app_cfg: dict, prev_state: dict, now: datetime) -> tuple[bo
     """
     根据提交类型（version）和当前时间判断是否应该检查某个应用。
 
-    规则：
+    首次/更新识别规则（通过 state.json 比对 version）：
+      - 应用不在 state 中 → 新应用，首次提交
+      - 应用在 state 中，version 未变 → 保持原频率
+      - 应用在 state 中，version 变化 → 更新，切换频率
+
+    查询频率规则：
       - version=1（首次提交上架）：
-        · submit_time 后 24 小时内不查询
+        · first_seen_time 后 24 小时内不查询
         · 24 小时后：工作日每 4 小时，周六每 6 小时
         · 周日不查询
       - version≥2（更新）：
@@ -270,21 +275,48 @@ def should_check_app(app_cfg: dict, prev_state: dict, now: datetime) -> tuple[bo
     if now.weekday() == 6:
         return False, "周日不查询"
 
-    if version == 1:
-        # 首次提交：24 小时内不查询
-        submit_time = app_cfg.get("submit_time")
-        if submit_time:
-            try:
-                submit_dt = datetime.fromisoformat(submit_time)
-                hours_since_submit = (now - submit_dt).total_seconds() / 3600
-                if hours_since_submit < 24:
-                    return False, f"首次提交后 {hours_since_submit:.1f}h，24h内不查询"
-            except (ValueError, TypeError):
-                logger.warning(f"⚠️ {real_pkg} submit_time 格式无效: {submit_time}")
-        else:
-            logger.warning(f"⚠️ {real_pkg} 首次提交(version=1)缺少 submit_time，24h延迟无法生效")
+    # 从 state 中获取历史信息，判断首次/更新
+    prev = prev_state.get(real_pkg)
+    is_first_submission = True  # 默认视为首次提交
 
-        # 确定查询间隔
+    if prev:
+        # 应用已在 state 中 → 不是首次出现
+        is_first_submission = False
+        prev_version = prev.get("version", 1)
+        if prev_version != version:
+            # version 变化 → 视为更新
+            logger.info(f"🔄 {real_pkg} version 从 {prev_version} 变为 {version}，视为更新")
+
+    if version == 1 and is_first_submission:
+        # 首次提交且第一次出现：24 小时内不查询
+        # first_seen_time 在 run_check_cycle 中首次记录时设置为当前时间
+        first_seen_time = prev.get("first_seen_time") if prev else None
+        if first_seen_time:
+            try:
+                first_seen_dt = datetime.fromisoformat(first_seen_time)
+                hours_since_first = (now - first_seen_dt).total_seconds() / 3600
+                if hours_since_first < 24:
+                    return False, f"首次提交后 {hours_since_first:.1f}h，24h内不查询"
+            except (ValueError, TypeError):
+                logger.warning(f"⚠️ {real_pkg} first_seen_time 格式无效: {first_seen_time}")
+        else:
+            # 还没记录 first_seen_time（本轮首次发现），跳过本轮（下轮会记录）
+            return False, "首次提交，尚未记录 first_seen_time，本轮跳过"
+
+    if version == 1 and not is_first_submission:
+        # version=1 但不是新应用 → 仍在首次提交模式
+        first_seen_time = prev.get("first_seen_time")
+        if first_seen_time:
+            try:
+                first_seen_dt = datetime.fromisoformat(first_seen_time)
+                hours_since_first = (now - first_seen_dt).total_seconds() / 3600
+                if hours_since_first < 24:
+                    return False, f"首次提交后 {hours_since_first:.1f}h，24h内不查询"
+            except (ValueError, TypeError):
+                pass
+
+    # 确定查询间隔
+    if version == 1:
         if now.weekday() == 5:  # 周六
             interval_hours = 6
         else:  # 工作日
@@ -294,7 +326,6 @@ def should_check_app(app_cfg: dict, prev_state: dict, now: datetime) -> tuple[bo
         interval_hours = 3
 
     # 判断距上次检查的时间
-    prev = prev_state.get(real_pkg)
     if prev and prev.get("last_checked"):
         try:
             last_dt = datetime.fromisoformat(prev["last_checked"])
@@ -507,9 +538,17 @@ def run_check_cycle(config: dict, first_run: bool = False):
         new_state[real_pkg] = {
             "live": is_live,
             "last_checked": datetime.now().isoformat(),
+            "version": app_cfg.get("version", 2),
         }
 
+        # 首次出现的应用：记录 first_seen_time（用于 24h 延迟计算）
         prev = prev_state.get(real_pkg)
+        if prev is None:
+            new_state[real_pkg]["first_seen_time"] = datetime.now().isoformat()
+        elif prev.get("first_seen_time"):
+            # 已有应用，保留原有的 first_seen_time
+            new_state[real_pkg]["first_seen_time"] = prev["first_seen_time"]
+            # version 变化时保留原有 first_seen_time（更新不需要 24h 延迟）
         if prev is None and first_run:
             logger.info(f"首次检查 {real_pkg}: {'已上架' if is_live else '未上架'}")
             msg = format_app_info(app_cfg, play_info, app_countries, real_package_name=real_pkg)

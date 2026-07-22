@@ -4,7 +4,7 @@
 
 ## ✨ 核心特性
 
-- **按应用配置上架国家**：每个应用必须指定上架目标国家，只查询配置的国家，无默认列表兜底
+- **按应用配置上架国家**：每个应用必须指定上架目标国家，只查询配置的国家
 - **按提交类型配置查询频率**：首次提交（version=1）24h 内不查，之后工作日 4h/周六 6h；更新（version≥2）每 3h；周日一律不查。通过 state.json 比对 version 自动识别首次/更新
 - **包名强制加密**：推送明文包名到 GitHub 后自动加密，仓库中永远只存储加密后的包名，不允许明文，无需手动加密
 - **自动清理**：应用上架后若再次下架，自动从 GitHub JSON 中删除该包名，无需手动维护
@@ -100,12 +100,12 @@
 
 进入仓库 **Settings → Secrets and variables → Actions**，添加以下 4 个 Secrets：
 
-| Secret 名称 | 值 | 说明 |
-|---|---|---|
-| `TG_BOT_TOKEN` | `123456:ABC-DEF...` | Telegram Bot Token |
-| `TG_CHAT_ID` | `-5541367556` 或 `987654321` | 目标 Chat ID（群组为负数） |
+| Secret 名称 | 值                                                                  | 说明 |
+|---|--------------------------------------------------------------------|---|
+| `TG_BOT_TOKEN` | `123456:ABC-DEF...`                                                | Telegram Bot Token |
+| `TG_CHAT_ID` | `123456...`                                                        | 目标 Chat ID（群组为负数） |
 | `GH_CONFIG_URL` | `https://raw.githubusercontent.com/用户名/仓库名/main/monitor_apps.json` | 监控列表 JSON 的 raw URL |
-| `ENCRYPT_KEY` | `tnDtrmbSFYEB3w5e_--...` | Fernet 加密密钥（包名加密时必填） |
+| `ENCRYPT_KEY` | `tnDtrmbSFYEB3w5e_--...`                                           | Fernet 加密密钥（包名加密时必填） |
 
 > `GITHUB_TOKEN` 由 Actions 自动提供，无需手动配置。
 
@@ -137,7 +137,7 @@ cp config.example.json config.json
 {
   "telegram": {
     "bot_token": "123456:ABC-DEF...",
-    "chat_id": "-5541367556"
+    "chat_id": "123456..."
   },
   "github": {
     "config_url": "https://raw.githubusercontent.com/.../monitor_apps.json",

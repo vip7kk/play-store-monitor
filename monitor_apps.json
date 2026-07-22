@@ -11,6 +11,12 @@
       "note": "待上架监控",
       "countries": ["mx"],
       "version": 1
+    },
+    {
+      "package_name": "com.beys.iidgw",
+      "note": "chris04",
+      "countries": ["mx"],
+      "version": 1
     }
   ]
 }

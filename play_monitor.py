@@ -285,10 +285,10 @@ def should_check_app(app_cfg: dict, prev_state: dict, now: datetime) -> tuple[bo
     查询频率规则：
       - version=1（首次提交上架）：
         · first_seen_time 后 24 小时内不查询
-        · 24 小时后：工作日每 4 小时，周六每 6 小时
+        · 24 小时后：工作日每 2 小时，周六每 3 小时
         · 周日不查询
       - version≥2（更新）：
-        · 每 3 小时查询一次
+        · 工作日每 1 小时，周六每 2 小时
         · 周日不查询
       - 缺少 version 字段：默认按更新模式（version=2）处理
 
@@ -298,7 +298,7 @@ def should_check_app(app_cfg: dict, prev_state: dict, now: datetime) -> tuple[bo
     version = app_cfg.get("version")
 
     if version is None:
-        logger.warning(f"⚠️ {real_pkg} 缺少 version 字段，默认按更新模式（3 小时间隔）处理")
+        logger.warning(f"⚠️ {real_pkg} 缺少 version 字段，默认按更新模式处理")
         version = 2
 
     # 周日一律不查询（weekday() 返回 6 = Sunday）
@@ -346,14 +346,13 @@ def should_check_app(app_cfg: dict, prev_state: dict, now: datetime) -> tuple[bo
                 pass
 
     # 确定查询间隔
+    is_saturday = now.weekday() == 5  # 周六
     if version == 1:
-        if now.weekday() == 5:  # 周六
-            interval_hours = 6
-        else:  # 工作日
-            interval_hours = 4
+        # 首次提交上架：工作日每 2h，周六每 3h
+        interval_hours = 3 if is_saturday else 2
     else:
-        # 更新模式
-        interval_hours = 3
+        # 更新：工作日每 1h，周六每 2h
+        interval_hours = 2 if is_saturday else 1
 
     # 判断距上次检查的时间
     if prev and prev.get("last_checked"):

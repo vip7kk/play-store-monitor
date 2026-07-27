@@ -4,8 +4,8 @@
 
 ## ✨ 核心特性
 
-- **按应用配置上架国家**：每个应用必须指定上架目标国家，只查询配置的国家
-- **按提交类型配置查询频率**：首次提交（version=1）24h 内不查，之后工作日 4h/周六 6h；更新（version≥2）每 3h；周日一律不查。通过 state.json 比对 version 自动识别首次/更新
+- **按应用配置上架国家**：每个应用必须指定上架目标国家，只查询配置的国家，无默认列表兜底
+- **按提交类型配置查询频率**：首次提交（version=1）24h 内不查，之后工作日 2h/周六 3h；更新（version≥2）工作日 1h/周六 2h；周日一律不查。通过 state.json 比对 version 自动识别首次/更新
 - **包名强制加密**：推送明文包名到 GitHub 后自动加密，仓库中永远只存储加密后的包名，不允许明文，无需手动加密
 - **自动清理**：应用上架后若再次下架，自动从 GitHub JSON 中删除该包名，无需手动维护
 - **状态对比**：通过 state.json 记录上次状态，仅在变化时推送通知（避免重复打扰）
@@ -91,6 +91,7 @@
 | `package_name` | ✅ | 应用包名（**必填**，加密或明文均可，缺少时该条目会被跳过） |
 | `countries` | ✅ | 上架目标国家列表，只查询这些国家。**必填，未配置时跳过检查** |
 | `version` | ✅ | 提交类型版本号。**1 = 首次提交上架**，**≥2 = 更新**，决定查询频率。首次/更新通过 state.json 比对自动识别 |
+| `encrypted` | ❌ | 已废弃，不再使用（包名格式自动区分加密/明文） |
 | `note` | ❌ | 备注，会显示在通知消息中 |
 | `app_name` | ❌ | 应用名称（脚本会自动从 Play Store 获取，可不填） |
 
@@ -100,12 +101,12 @@
 
 进入仓库 **Settings → Secrets and variables → Actions**，添加以下 4 个 Secrets：
 
-| Secret 名称 | 值                                                                  | 说明 |
-|---|--------------------------------------------------------------------|---|
-| `TG_BOT_TOKEN` | `123456:ABC-DEF...`                                                | Telegram Bot Token |
-| `TG_CHAT_ID` | `123456...`                                                        | 目标 Chat ID（群组为负数） |
+| Secret 名称 | 值 | 说明 |
+|---|---|---|
+| `TG_BOT_TOKEN` | `123456:ABC-DEF...` | Telegram Bot Token |
+| `TG_CHAT_ID` | `-5541367556` 或 `987654321` | 目标 Chat ID（群组为负数） |
 | `GH_CONFIG_URL` | `https://raw.githubusercontent.com/用户名/仓库名/main/monitor_apps.json` | 监控列表 JSON 的 raw URL |
-| `ENCRYPT_KEY` | `tnDtrmbSFYEB3w5e_--...`                                           | Fernet 加密密钥（包名加密时必填） |
+| `ENCRYPT_KEY` | `tnDtrmbSFYEB3w5e_--...` | Fernet 加密密钥（包名加密时必填） |
 
 > `GITHUB_TOKEN` 由 Actions 自动提供，无需手动配置。
 
@@ -137,7 +138,7 @@ cp config.example.json config.json
 {
   "telegram": {
     "bot_token": "123456:ABC-DEF...",
-    "chat_id": "123456..."
+    "chat_id": "-5541367556"
   },
   "github": {
     "config_url": "https://raw.githubusercontent.com/.../monitor_apps.json",
@@ -184,7 +185,7 @@ python play_monitor.py --daemon --first-run
 Telegram 上架消息示例：
 
 ```
-🎉 应用已上架！
+🎉 应用已上架（jp 区）！
 
 应用名称: My App
 包名: com.example.myapp
@@ -192,7 +193,7 @@ Telegram 上架消息示例：
 评分: 4.5
 安装量: 10,000+
 备注: 2026-07-20 提交审核
-目标国家: 新加坡
+目标国家: jp, kr, de, fr
 
 查看应用 → https://play.google.com/store/apps/details?id=com.example.myapp
 ```
@@ -218,18 +219,18 @@ Telegram 上架消息示例：
 }
 ```
 
-> `countries` 是必填字段，请为每个应用明确指定上架目标国家。
+> `countries` 是必填字段，没有默认列表兜底。请为每个应用明确指定上架目标国家。
 
 ## ⏱️ 查询频率调度
 
 每个应用通过 `version` 字段区分提交类型，不同类型使用不同的查询频率。首次/更新通过 `state.json` 比对 `version` 自动识别：
 
-| 提交类型 | version | 查询频率 | 周六 | 周日 |
-|----------|---------|----------|------|------|
-| **首次提交上架** | 1 | 首次发现后 24h 内不查，之后每 4h | 每 6h | 不查 |
-| **更新** | ≥2 | 每 3h | 每 3h | 不查 |
+| 提交类型 | version | 工作日 | 周六 | 周日 |
+|----------|---------|--------|------|------|
+| **首次提交上架** | 1 | 24h 内不查，之后每 2h | 每 3h | 不查 |
+| **更新** | ≥2 | 每 1h | 每 2h | 不查 |
 
-> 缺少 `version` 字段时默认按更新模式（每 3h）处理。首次/更新识别不再需要 `submit_time`，脚本通过 `state.json` 中的 `first_seen_time` 和 `version` 比对自动判断。
+> 缺少 `version` 字段时默认按更新模式处理。首次/更新识别不再需要 `submit_time`，脚本通过 `state.json` 中的 `first_seen_time` 和 `version` 比对自动判断。
 
 ### 首次提交上架示例
 
@@ -242,7 +243,7 @@ Telegram 上架消息示例：
 ```
 
 - 首次出现在 `monitor_apps.json` 中的应用，脚本自动在 `state.json` 中记录 `first_seen_time`（当前时间）
-- 24 小时后才开始查询，工作日每 4 小时、周六每 6 小时
+- 24 小时后才开始查询，工作日每 2 小时、周六每 3 小时
 
 ### 更新示例
 
@@ -256,7 +257,7 @@ Telegram 上架消息示例：
 ```
 
 - 将 `version` 从 `1` 改为 `2`（或更大值），脚本比对 `state.json` 中记录的旧 version 后识别为更新
-- 更新模式直接按 3 小时间隔查询
+- 更新模式无需 `submit_time`，工作日每 1 小时、周六每 2 小时查询
 - 周日不查询
 
 ### 工作原理
@@ -295,7 +296,7 @@ GitHub Actions 每小时触发一次脚本（周一至周六），脚本内部�
 
 ## 🔐 安全说明
 
-- **包名强制加密**：推送明文包名到 GitHub 后，`encrypt.yml` workflow 自动用 Fernet 加密并推回仓库。包名强制加密，不允许明文。通过 Fernet token 格式（`gAAAAA` 前缀）自动区分加密/明文
+- **包名强制加密**：推送明文包名到 GitHub 后，`encrypt.yml` workflow 自动用 Fernet 加密并推回仓库。包名强制加密，不允许明文。通过 Fernet token 格式（`gAAAAA` 前缀）自动区分加密/明文，不再使用 `encrypted` 字段
 - **GitHub Actions**：Bot Token、Chat ID、加密密钥等敏感信息通过 Secrets 加密存储，代码中不包含任何密钥
 - **本地运行**：`config.json` 不应提交到仓库（已在 .gitignore 中排除），使用 `config.example.json` 作为模板
 - **GitHub Token**：自动删除下架包名需要 Token 权限（Actions 使用自动生成的 GITHUB_TOKEN，本地运行需手动配置 Classic PAT，需 `repo` + `workflow` 权限）
@@ -315,6 +316,8 @@ encrypt_packages.py 读取文件，找出不以 "gAAAAA" 开头的包名（即�
         ↓
 用 ENCRYPT_KEY (Fernet) 加密包名
         ↓
+清理 "encrypted" 字段（不再需要，格式自动区分）
+        ↓
 将加密后的内容推回 GitHub（明文包名被替换为加密字符串）
         ↓
 仓库中只保留加密后的包名，无法看到真实包名
@@ -322,7 +325,7 @@ encrypt_packages.py 读取文件，找出不以 "gAAAAA" 开头的包名（即�
 
 ### 判断规则
 
-Fernet 加密 token 以 `gAAAAA` 开头（version byte 0x80 的 base64 编码），以此自动区分：
+不再使用 `"encrypted"` 字段。Fernet 加密 token 以 `gAAAAA` 开头（version byte 0x80 的 base64 编码），以此自动区分：
 - **以 `gAAAAA` 开头** → 已加密的包名，跳过
 - **不以 `gAAAAA` 开头** → 明文包名，需要加密
 
@@ -376,7 +379,7 @@ push 后几秒钟，workflow 自动完成加密，文件变为：
 }
 ```
 
-- 包名格式自动区分加密/明文
+- 不需要 `"encrypted"` 字段，包名格式自动区分加密/明文
 - 加密后即使仓库是公开的，也无法看到真实包名
 - 脚本运行时自动使用 `ENCRYPT_KEY` 解密，通知消息中显示真实包名
 
@@ -429,7 +432,7 @@ https://api.telegram.org/bot{TOKEN}/getUpdates
 
 **Q: 忘记配置 version 会怎样？**
 
-缺少 `version` 字段时默认按更新模式（每 3 小时）处理。建议明确填写，首次提交上架填 `1`，更新填 `2` 或更大值。
+缺少 `version` 字段时默认按更新模式处理。建议明确填写，首次提交上架填 `1`，更新填 `2` 或更大值。
 
 **Q: 如何判断首次提交还是更新？**
 
@@ -457,3 +460,7 @@ push 到 GitHub 后，`encrypt.yml` workflow 通常在几秒到十几秒内触�
 **Q: 包名支持明文吗？**
 
 不支持。包名强制加密，明文推送后会被自动加密替换。监控脚本运行时缺少 `ENCRYPT_KEY` 会直接报错退出。
+
+**Q: 旧的 `encrypted` 字段还在用吗？**
+
+不再使用。`encrypted` 字段已废弃，加密/明文通过 Fernet token 格式自动区分（加密包名以 `gAAAAA` 开头）。encrypt_packages.py 会自动清理残留的 `encrypted` 字段。

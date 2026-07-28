@@ -418,13 +418,13 @@ def format_app_info(app_config: dict, play_info: dict | None, app_countries: lis
         found_country_code = play_info.get("found_in_country", "")
         found_country_name = country_code_to_name(found_country_code) if found_country_code else ""
         country_tag = f"（{found_country_name}）" if found_country_name else ""
+        app_version = app_config.get("version", "")
+        version_str = f"\n*应用版本*: {app_version}" if app_version else ""
         return (
             f"🎉 *应用已上架{country_tag}！*\n\n"
             f"*应用名称*: {play_info['title']}\n"
-            f"*包名*: `{display_pkg}`\n"
-            f"*版本*: {play_info['version']}\n"
-            f"*评分*: {play_info['score']}\n"
-            f"*安装量*: {play_info['installs']}\n"
+            f"*包名*: `{display_pkg}`"
+            f"{version_str}\n"
             f"*备注*: {note}{countries_str}\n\n"
             f"[查看应用]({play_info['url']})"
         )

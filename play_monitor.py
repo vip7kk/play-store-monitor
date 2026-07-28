@@ -420,11 +420,15 @@ def format_app_info(app_config: dict, play_info: dict | None, app_countries: lis
         country_tag = f"（{found_country_name}）" if found_country_name else ""
         app_version = app_config.get("version", "")
         version_str = f"\n*应用版本*: {app_version}" if app_version else ""
+        # Play Store 返回的具体版本号（过滤掉 "Varies with device"）
+        store_version = play_info.get("version", "")
+        store_version_str = f"\n*商店版本*: {store_version}" if store_version and store_version != "Varies with device" else ""
         return (
             f"🎉 *应用已上架{country_tag}！*\n\n"
             f"*应用名称*: {play_info['title']}\n"
             f"*包名*: `{display_pkg}`"
-            f"{version_str}\n"
+            f"{version_str}"
+            f"{store_version_str}\n"
             f"*备注*: {note}{countries_str}\n\n"
             f"[查看应用]({play_info['url']})"
         )

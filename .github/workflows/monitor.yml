@@ -37,9 +37,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: state.json
-          key: play-monitor-state-${{ github.run_number }}
-          restore-keys: |
-            play-monitor-state-
+          key: play-monitor-state
 
       - name: Run monitor (normal)
         if: github.event.inputs.first_run != 'true'

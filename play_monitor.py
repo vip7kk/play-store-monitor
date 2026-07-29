@@ -563,9 +563,16 @@ def run_check_cycle(config: dict, first_run: bool = False):
         should_check, reason = should_check_app(app_cfg, prev_state, now)
         if not should_check:
             logger.info(f"⏭️ {real_pkg}: {reason}")
-            # 保留之前的状态（不更新 last_checked）
             if real_pkg in prev_state:
                 new_state[real_pkg] = prev_state[real_pkg]
+            else:
+                # 新应用首次出现：立即记录 first_seen_time，下轮开始走 24h 延迟
+                new_state[real_pkg] = {
+                    "live": False,
+                    "last_checked": "",
+                    "version": app_cfg.get("version", 2),
+                    "first_seen_time": datetime.now().isoformat(),
+                }
             continue
 
         logger.info(f"检查: {real_pkg} (version={app_cfg.get('version', '?')}) | 目标国家: {','.join(countries_to_names(app_countries))}")

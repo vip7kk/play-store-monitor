@@ -600,7 +600,7 @@ def run_check_cycle(config: dict, first_run: bool = False):
             send_telegram_message(tg["bot_token"], tg["chat_id"], msg)
         elif prev is None and not first_run:
             logger.info(f"新增监控 {real_pkg}: {'已上架' if is_live else '未上架'}")
-            msg = f"📋 *新增监控应用*\n\n{format_app_info(app_cfg, play_info, app_countries, real_package_name=real_pkg)}"
+            msg = format_app_info(app_cfg, play_info, app_countries, real_package_name=real_pkg)
             send_telegram_message(tg["bot_token"], tg["chat_id"], msg)
         elif not prev["live"] and is_live:
             logger.info(f"🎉 {real_pkg} 新上架！")

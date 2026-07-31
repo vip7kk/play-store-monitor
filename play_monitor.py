@@ -25,7 +25,7 @@ import sys
 import argparse
 import base64
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import requests
@@ -57,6 +57,14 @@ CONFIG_PATH = BASE_DIR / "config.json"
 STATE_PATH = BASE_DIR / "state.json"
 
 DEFAULT_LANG = "en"  # 查询统一使用英文，避免语言问题
+
+# 北京时间偏移（GitHub Actions 运行环境为 UTC，用 +8h 换算成北京时间判断周六/周日）
+CN_OFFSET = timedelta(hours=8)
+
+
+def cn_now(now: datetime) -> datetime:
+    """将 UTC 时间转换为北京时间（用于周六/周日判断）"""
+    return now + CN_OFFSET
 
 # ── 国家码 → 完整国家名称映射 ────────────────────────────────
 COUNTRY_NAMES = {
@@ -301,8 +309,8 @@ def should_check_app(app_cfg: dict, prev_state: dict, now: datetime) -> tuple[bo
         logger.warning(f"⚠️ {real_pkg} 缺少 version 字段，默认按更新模式处理")
         version = 2
 
-    # 周日一律不查询（weekday() 返回 6 = Sunday）
-    if now.weekday() == 6:
+    # 周日一律不查询（按北京时间判断，weekday() 返回 6 = Sunday）
+    if cn_now(now).weekday() == 6:
         return False, "周日不查询"
 
     # 从 state 中获取历史信息，判断首次/更新
@@ -318,8 +326,8 @@ def should_check_app(app_cfg: dict, prev_state: dict, now: datetime) -> tuple[bo
             logger.info(f"🔄 {real_pkg} version 从 {prev_version} 变为 {version}，视为更新")
 
     if version == 1 and is_first_submission:
-        # 首次提交且第一次出现：24 小时内不查询
-        # first_seen_time 在 run_check_cycle 中首次记录时设置为当前时间
+        # 首次提交且第一次出现：本轮先检查一次以初始化真实状态（不发通知）
+        # first_seen_time 在 run_check_cycle 中记录，本轮之后 24h 内不再检查
         first_seen_time = prev.get("first_seen_time") if prev else None
         if first_seen_time:
             try:
@@ -329,9 +337,6 @@ def should_check_app(app_cfg: dict, prev_state: dict, now: datetime) -> tuple[bo
                     return False, f"首次提交后 {hours_since_first:.1f}h，24h内不查询"
             except (ValueError, TypeError):
                 logger.warning(f"⚠️ {real_pkg} first_seen_time 格式无效: {first_seen_time}")
-        else:
-            # 还没记录 first_seen_time（本轮首次发现），跳过本轮（下轮会记录）
-            return False, "首次提交，尚未记录 first_seen_time，本轮跳过"
 
     if version == 1 and not is_first_submission:
         # version=1 但不是新应用 → 仍在首次提交模式
@@ -345,8 +350,8 @@ def should_check_app(app_cfg: dict, prev_state: dict, now: datetime) -> tuple[bo
             except (ValueError, TypeError):
                 pass
 
-    # 确定查询间隔
-    is_saturday = now.weekday() == 5  # 周六
+    # 确定查询间隔（按北京时间判断周六）
+    is_saturday = cn_now(now).weekday() == 5  # 周六
     if version == 1:
         # 首次提交上架：工作日每 2h，周六每 3h
         interval_hours = 3 if is_saturday else 2
@@ -599,9 +604,9 @@ def run_check_cycle(config: dict, first_run: bool = False):
             msg = format_app_info(app_cfg, play_info, app_countries, real_package_name=real_pkg)
             send_telegram_message(tg["bot_token"], tg["chat_id"], msg)
         elif prev is None and not first_run:
-            logger.info(f"新增监控 {real_pkg}: {'已上架' if is_live else '未上架'}")
-            msg = format_app_info(app_cfg, play_info, app_countries, real_package_name=real_pkg)
-            send_telegram_message(tg["bot_token"], tg["chat_id"], msg)
+            # 新应用首次出现：静默记录状态，不发送通知
+            # 避免已上架应用被当作"新增上架"重复通知
+            logger.info(f"新增监控 {real_pkg}: {'已上架' if is_live else '未上架'}（静默记录，不发送通知）")
         elif not prev["live"] and is_live:
             logger.info(f"🎉 {real_pkg} 新上架！")
             msg = format_app_info(app_cfg, play_info, app_countries, real_package_name=real_pkg)

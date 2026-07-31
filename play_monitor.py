@@ -12,7 +12,7 @@ Google Play Store 上架监控 + Telegram 提醒机器人
 
 特色功能：
   - 按应用配置上架国家：每个应用必须指定上架目标国家，只查询配置的国家
-  - 按提交类型配置查询频率：首次提交（version=1）24h内不查、之后4h/6h一查；更新（version≥2）3h一查；周日一律不查。通过 state.json 比对 version 自动识别首次/更新，无需手动填 submit_time
+  - 按提交类型配置查询频率：首次提交（version=1）24h内不查、之后工作日2h/周六3h一查；更新（version≥2）工作日1h/周六2h一查；周日一律不查（按北京时间）。通过 state.json 比对 version 自动识别首次/更新，无需手动填 submit_time
   - 包名强制加密：所有包名使用 Fernet 加密存储，GitHub 仓库中不暴露真实包名，明文推送后自动加密
   - 自动清理：应用上架后若再次下架，自动从 GitHub JSON 中删除该包名
 """
@@ -326,8 +326,8 @@ def should_check_app(app_cfg: dict, prev_state: dict, now: datetime) -> tuple[bo
             logger.info(f"🔄 {real_pkg} version 从 {prev_version} 变为 {version}，视为更新")
 
     if version == 1 and is_first_submission:
-        # 首次提交且第一次出现：本轮先检查一次以初始化真实状态（不发通知）
-        # first_seen_time 在 run_check_cycle 中记录，本轮之后 24h 内不再检查
+        # 首次提交且第一次出现：24 小时内不查询
+        # first_seen_time 在 run_check_cycle 中首次记录时设置为当前时间
         first_seen_time = prev.get("first_seen_time") if prev else None
         if first_seen_time:
             try:
@@ -337,6 +337,9 @@ def should_check_app(app_cfg: dict, prev_state: dict, now: datetime) -> tuple[bo
                     return False, f"首次提交后 {hours_since_first:.1f}h，24h内不查询"
             except (ValueError, TypeError):
                 logger.warning(f"⚠️ {real_pkg} first_seen_time 格式无效: {first_seen_time}")
+        else:
+            # 还没记录 first_seen_time（本轮首次发现），跳过本轮（下轮会记录）
+            return False, "首次提交，尚未记录 first_seen_time，本轮跳过"
 
     if version == 1 and not is_first_submission:
         # version=1 但不是新应用 → 仍在首次提交模式

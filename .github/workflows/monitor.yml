@@ -2,8 +2,9 @@ name: Play Store Monitor
 
 on:
   schedule:
-    # 每小时触发一次（周一至周六），周日不运行（脚本内部也跳过周日）
-    - cron: '0 * * * 1-6'
+    # 每小时触发一次（每天）。脚本内部按北京时间判断周日跳过
+    # （GitHub cron 为 UTC，与北京时间差 8h，无法直接在 cron 精确表达北京时间周日）
+    - cron: '0 * * * *'
   workflow_dispatch:
     inputs:
       first_run:

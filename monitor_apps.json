@@ -31,6 +31,22 @@
         "mx"
       ],
       "version": 1
+    },
+    {
+      "package_name": "com.rxdf.usvbt",
+      "note": "sh01",
+      "countries": [
+        "in"
+      ],
+      "version": 1
+    },
+    {
+      "package_name": "com.dggxd.uwavvt",
+      "note": "sh02",
+      "countries": [
+        "in"
+      ],
+      "version": 1
     }
   ]
 }

@@ -17,15 +17,9 @@
     "version": 2,
     "first_seen_time": "2026-11-08T01:27:37.502991"
   },
-  "com.rxdf.usvbt": {
-    "live": true,
-    "last_checked": "2026-11-10T14:00:54.917958",
-    "version": 1,
-    "first_seen_time": "2026-11-08T01:27:37.503054"
-  },
   "com.dggxd.uwavvt": {
     "live": true,
-    "last_checked": "2026-11-10T14:00:56.275416",
+    "last_checked": "2026-11-10T17:00:50.979491",
     "version": 1,
     "first_seen_time": "2026-11-08T01:27:37.503082"
   }

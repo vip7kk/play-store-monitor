@@ -415,7 +415,6 @@ def format_app_info(app_config: dict, play_info: dict | None, app_countries: lis
     """格式化应用信息为 Telegram 消息文本"""
     # 优先使用解密后的真实包名用于显示和链接
     display_pkg = real_package_name or app_config.get("package_name", "")
-    name = app_config.get("app_name", display_pkg)
     note = app_config.get("note", "")
     countries_str = ""
     if app_countries:
@@ -446,7 +445,6 @@ def format_app_info(app_config: dict, play_info: dict | None, app_countries: lis
         return (
             f"⚠️ *应用未上架*\n\n"
             f"*包名*: `{display_pkg}`\n"
-            f"*预期名称*: {name}\n"
             f"*备注*: {note}{countries_str}"
         )
 
@@ -627,8 +625,7 @@ def run_check_cycle(config: dict, first_run: bool = False):
             msg = (
                 f"🚨 *应用已下架，自动移除监控*\n\n"
                 f"*包名*: `{real_pkg}`\n"
-                f"*预期名称*: {app_cfg.get('app_name', '')}\n"
-                f"*备注*: 该包名已从监控列表 JSON 中自动删除，后续不再检查"
+                f"*备注*: {app_cfg.get('note', '')}"
             )
             send_telegram_message(tg["bot_token"], tg["chat_id"], msg)
             packages_to_remove.append(real_pkg)

@@ -392,21 +392,23 @@ def save_state(state: dict):
 
 # ── Telegram 发送通知 ──────────────────────────────────────
 def send_telegram_message(bot_token: str, chat_id: str, text: str):
-    """通过 Telegram Bot API 发送消息"""
+    """通过 Telegram Bot API 发送消息（chat_id 支持逗号分隔的多个群，逐个发送）"""
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-    payload = {
-        "chat_id": chat_id,
-        "text": text,
-        "parse_mode": "Markdown",
-    }
-    try:
-        resp = requests.post(url, json=payload, timeout=15)
-        if resp.status_code != 200:
-            logger.error(f"Telegram API 返回错误: {resp.status_code} {resp.text}")
-        else:
-            logger.info("Telegram 通知已发送")
-    except Exception as e:
-        logger.error(f"Telegram 通知发送失败: {e}")
+    targets = [c.strip() for c in str(chat_id).split(",") if c.strip()]
+    for target in targets:
+        payload = {
+            "chat_id": target,
+            "text": text,
+            "parse_mode": "Markdown",
+        }
+        try:
+            resp = requests.post(url, json=payload, timeout=15)
+            if resp.status_code != 200:
+                logger.error(f"Telegram API 返回错误 ({target}): {resp.status_code} {resp.text}")
+            else:
+                logger.info(f"Telegram 通知已发送 ({target})")
+        except Exception as e:
+            logger.error(f"Telegram 通知发送失败 ({target}): {e}")
 
 
 def format_app_info(app_config: dict, play_info: dict | None, app_countries: list[str] | None = None, real_package_name: str | None = None) -> str:

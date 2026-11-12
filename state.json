@@ -1,13 +1,13 @@
 {
   "com.beys.iidgw": {
     "live": true,
-    "last_checked": "2026-11-12T08:00:47.711453",
+    "last_checked": "2026-11-12T10:00:46.925344",
     "version": 2,
     "first_seen_time": "2026-11-08T01:27:37.502954"
   },
   "com.ytddfd.whmiud": {
     "live": true,
-    "last_checked": "2026-11-12T08:00:49.001499",
+    "last_checked": "2026-11-12T10:00:48.147232",
     "version": 2,
     "first_seen_time": "2026-11-08T01:27:37.502991"
   },
@@ -22,5 +22,11 @@
     "last_checked": "",
     "version": 1,
     "first_seen_time": "2026-11-12T09:00:46.235022"
+  },
+  "com.dcsukf.emulscf": {
+    "live": null,
+    "last_checked": "",
+    "version": 1,
+    "first_seen_time": "2026-11-12T10:00:49.147744"
   }
 }

@@ -23,6 +23,14 @@
         "in"
       ],
       "version": 1
+    },
+    {
+      "package_name": "com.rghd.usffgc",
+      "note": "sh03",
+      "countries": [
+        "in"
+      ],
+      "version": 1
     }
   ]
 }

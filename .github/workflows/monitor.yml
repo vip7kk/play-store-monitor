@@ -48,12 +48,26 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
+          ENCRYPT_KEY: ${{ secrets.ENCRYPT_KEY }}
         run: |
           URL="https://api.github.com/repos/${GITHUB_REPOSITORY}/contents/state.json?ref=main"
           code=$(curl -s -o state_resp.json -w "%{http_code}" -H "Authorization: token ${GH_TOKEN}" -H "User-Agent: monitor-bot" "$URL")
           if [ "$code" = "200" ]; then
-            python -c "import json,base64;d=json.load(open('state_resp.json'));open('state.json','wb').write(base64.b64decode(d['content']))"
-            echo "state.json restored from repo (cache was lost)"
+            cat > restore_state.py <<'PYEOF'
+          import json, base64, os
+          d = json.load(open('state_resp.json'))
+          raw = base64.b64decode(d['content'])
+          key = os.environ.get('ENCRYPT_KEY', '')
+          if raw.startswith(b'gAAAAA') and key:
+              from cryptography.fernet import Fernet
+              raw = Fernet(key.encode()).decrypt(raw)
+              print('state.json restored and decrypted')
+          else:
+              print('state.json restored (plaintext, legacy format)')
+          open('state.json', 'wb').write(raw)
+          PYEOF
+            python restore_state.py
+            rm -f restore_state.py state_resp.json
           else
             echo "No state.json in repo (HTTP $code), starting with empty state"
           fi
@@ -85,14 +99,14 @@ jobs:
         run: |
           if [ -f state.json ]; then
             echo "State file saved successfully"
-            cat state.json
           fi
 
-      - name: Save state to repo (persistent backup)
+      - name: Save state to repo (persistent backup, encrypted)
         if: always() && hashFiles('state.json') != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
+          ENCRYPT_KEY: ${{ secrets.ENCRYPT_KEY }}
         run: |
           cat > push_state.py <<'PYEOF'
           import json, base64, os, time, urllib.request
@@ -103,6 +117,10 @@ jobs:
           headers = {"Authorization": "token " + token, "Accept": "application/vnd.github+json",
                      "Content-Type": "application/json", "User-Agent": "monitor-bot"}
           content_bytes = open("state.json", "rb").read()
+          key = os.environ.get("ENCRYPT_KEY", "")
+          if key and not content_bytes.startswith(b"gAAAAA"):
+              from cryptography.fernet import Fernet
+              content_bytes = Fernet(key.encode()).encrypt(content_bytes)
           payload = base64.b64encode(content_bytes).decode()
 
           for attempt in range(3):

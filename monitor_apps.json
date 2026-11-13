@@ -39,6 +39,14 @@
         "in"
       ],
       "version": 1
+    },
+    {
+      "package_name": "com.rtfgn.ayuudf",
+      "note": "sh05",
+      "countries": [
+        "in"
+      ],
+      "version": 1
     }
   ]
 }

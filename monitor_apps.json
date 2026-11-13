@@ -47,6 +47,14 @@
         "in"
       ],
       "version": 1
+    },
+    {
+      "package_name": "com.uwevng.asicvdr",
+      "note": "sh06",
+      "countries": [
+        "in"
+      ],
+      "version": 1
     }
   ]
 }

@@ -47,6 +47,14 @@
         "in"
       ],
       "version": 1
+    },
+    {
+      "package_name": "com.rvngus.zsumhfe",
+      "note": "sh08",
+      "countries": [
+        "in"
+      ],
+      "version": 1
     }
   ]
 }

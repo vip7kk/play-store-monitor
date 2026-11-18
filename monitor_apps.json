@@ -63,6 +63,14 @@
         "in"
       ],
       "version": 1
+    },
+    {
+      "package_name": "com.ffdgj.assfhj",
+      "note": "sh12",
+      "countries": [
+        "in"
+      ],
+      "version": 1
     }
   ]
 }

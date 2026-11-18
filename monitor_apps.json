@@ -71,6 +71,14 @@
         "in"
       ],
       "version": 1
+    },
+    {
+      "package_name": "com.msset.uysdes",
+      "note": "sh13",
+      "countries": [
+        "in"
+      ],
+      "version": 1
     }
   ]
 }

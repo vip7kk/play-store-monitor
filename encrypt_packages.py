@@ -16,6 +16,7 @@ import json
 import base64
 import os
 import sys
+import time
 import logging
 
 import requests
@@ -95,7 +96,8 @@ def fetch_file_from_github(owner: str, repo: str, path: str, branch: str = "main
 
 def push_file_to_github(owner: str, repo: str, path: str, content: str, sha: str, branch: str = "main", gh_token: str = "", message: str = "") -> bool:
     """
-    将更新后的文件内容推送回 GitHub
+    将更新后的文件内容推送回 GitHub（最多重试 3 次，应对 500/429 等临时故障）
+    每次重试都重新拉取最新 sha，避免 409 conflict
     """
     api_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{path}"
     headers = {
@@ -111,13 +113,27 @@ def push_file_to_github(owner: str, repo: str, path: str, content: str, sha: str
         "branch": branch,
     }
 
-    resp = requests.put(api_url, headers=headers, json=payload, timeout=15)
-    if resp.status_code in (200, 201):
-        logger.info(f"✅ 文件已推送到 GitHub: {path}")
-        return True
-    else:
-        logger.error(f"推送失败: {resp.status_code} {resp.text}")
-        return False
+    for attempt in range(1, 4):
+        try:
+            resp = requests.put(api_url, headers=headers, json=payload, timeout=20)
+            if resp.status_code in (200, 201):
+                logger.info(f"✅ 文件已推送到 GitHub: {path}")
+                return True
+            logger.warning(f"推送失败（第 {attempt}/3 次）: {resp.status_code} {resp.text[:200]}")
+            # 409 conflict（sha 过期）时重新拉取最新 sha
+            if resp.status_code == 409:
+                try:
+                    _, sha, _ = fetch_file_from_github(owner, repo, path, branch=branch, gh_token=gh_token)
+                    payload["sha"] = sha
+                except Exception as e:
+                    logger.warning(f"重新获取 sha 失败: {e}")
+        except Exception as e:
+            logger.warning(f"推送异常（第 {attempt}/3 次）: {e}")
+        if attempt < 3:
+            time.sleep(5 * attempt)  # 5s / 10s 退避
+
+    logger.error(f"❌ 推送最终失败（已重试 3 次）: {path}")
+    return False
 
 
 def encrypt_plain_packages(config: dict) -> bool:
@@ -168,7 +184,7 @@ def encrypt_plain_packages(config: dict) -> bool:
 
     if not changed:
         logger.info("所有包名均已加密，无需操作")
-        return False
+        return True  # 无需操作视为成功，避免触发误报失败
 
     # 3. 推送更新到 GitHub
     new_content = json.dumps(json_data, indent=2, ensure_ascii=False)
@@ -188,7 +204,11 @@ def encrypt_plain_packages(config: dict) -> bool:
 
 def main():
     config = load_env_config()
-    encrypt_plain_packages(config)
+    success = encrypt_plain_packages(config)
+    if not success:
+        # 有明文包名需要加密但推送失败 → 退出码 1，让 workflow 显示失败并触发失败通知
+        logger.error("自动加密未完成（推送失败），workflow 将以失败状态结束")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

@@ -79,6 +79,14 @@
         "in"
       ],
       "version": 1
+    },
+    {
+      "package_name": "com.bawern.uawthth",
+      "note": "sh14",
+      "countries": [
+        "in"
+      ],
+      "version": 1
     }
   ]
 }

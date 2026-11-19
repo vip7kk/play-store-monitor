@@ -581,6 +581,7 @@ def run_check_cycle(config: dict, first_run: bool = False):
                     "last_checked": "",
                     "version": app_cfg.get("version", 2),
                     "first_seen_time": datetime.now().isoformat(),
+                    "placeholder_reason": "new",  # 新应用初始化占位
                 }
             continue
 
@@ -612,9 +613,16 @@ def run_check_cycle(config: dict, first_run: bool = False):
             # 避免已上架应用被当作"新增上架"重复通知
             logger.info(f"新增监控 {real_pkg}: {'已上架' if is_live else '未上架'}（静默记录，不发送通知）")
         elif prev.get("live") is None:
-            # 上次只是占位记录、从未真正查询过（如缓存丢失后状态重建），
-            # 本次是首次真实检查：静默记录，绝不发"新上架"通知
-            logger.info(f"{real_pkg}: 首次真实检查（{'已上架' if is_live else '未上架'}），占位状态不计为变化，不发送通知")
+            # 占位状态的首次真实检查
+            if prev.get("placeholder_reason") == "new" and is_live:
+                # 新应用初始化占位：首次真实检查发现已上架 → 这是真正的首次上架，发通知
+                # （缓存丢失重建的占位不带 new 标记，继续静默以防假通知）
+                logger.info(f"🎉 {real_pkg} 首次真实检查发现已上架，发送上架通知")
+                msg = format_app_info(app_cfg, play_info, app_countries, real_package_name=real_pkg)
+                send_telegram_message(tg["bot_token"], tg["chat_id"], msg)
+            else:
+                # 缓存丢失重建的占位（或未上架）→ 静默记录，绝不发假"新上架"通知
+                logger.info(f"{real_pkg}: 首次真实检查（{'已上架' if is_live else '未上架'}），占位状态不计为变化，不发送通知")
         elif prev.get("live") is False and is_live:
             logger.info(f"🎉 {real_pkg} 新上架！")
             msg = format_app_info(app_cfg, play_info, app_countries, real_package_name=real_pkg)
